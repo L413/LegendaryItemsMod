@@ -1,0 +1,5 @@
+name: LegendaryItems
+version: ${version}
+main: com.l413.legendary.LegendaryPlugin
+api-version: '26.3'
+authors: [l413]
