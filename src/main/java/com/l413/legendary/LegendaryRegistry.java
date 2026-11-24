@@ -62,9 +62,9 @@ public class LegendaryRegistry {
                 0.7,
                 List.of(
                         Component.text("The one and only Storm God's weapon.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("A mighty mace forged from four Heavy Cores.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
+                        Component.text("A mighty mace forged from four Heavy Cores. Wind Burst I.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
                         Component.text("On hit: real lightning strikes your target, with four surrounding visual bolts (15s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak + right-click air while looking up: harmless sky lightning and a vertical launch (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Sneak + right-click air while looking up: a vertical launch surrounded by repeated spiraling sky lightning (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -151,7 +151,7 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
                         Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Durability: 10% above a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Durability: 9x a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(

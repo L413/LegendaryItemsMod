@@ -132,25 +132,6 @@ public class LegendaryListener implements Listener {
         }
 
         Location center = player.getLocation();
-        for (int strike = 0; strike < 5; strike++) {
-            double angle = (Math.PI * 2.0 * strike) / 5.0;
-            double radius = strike % 2 == 0 ? 2.0 : 3.5;
-            Location boltLocation = center.clone().add(
-                    Math.cos(angle) * radius,
-                    5.0 + (strike % 3) * 2.0,
-                    Math.sin(angle) * radius
-            );
-            player.getWorld().strikeLightningEffect(boltLocation);
-            player.getWorld().spawnParticle(
-                    Particle.ELECTRIC_SPARK,
-                    boltLocation,
-                    30,
-                    0.9,
-                    1.4,
-                    0.9,
-                    0.15
-            );
-        }
         player.getWorld().spawnParticle(
                 Particle.FLASH,
                 center.clone().add(0.0, 1.0, 0.0),
@@ -171,6 +152,62 @@ public class LegendaryListener implements Listener {
                 0.0
         );
         launchPlayerNextTick(player, new Vector(0.0, 2.4, 0.0));
+        UUID playerId = player.getUniqueId();
+        new BukkitRunnable() {
+            private int tick;
+
+            @Override
+            public void run() {
+                Player ascendingPlayer = Bukkit.getPlayer(playerId);
+                if (ascendingPlayer == null || !ascendingPlayer.isOnline() || tick >= 30) {
+                    cancel();
+                    return;
+                }
+
+                Location position = ascendingPlayer.getLocation();
+                double angle = tick * Math.PI / 5.0;
+                for (int strike = 0; strike < 3; strike++) {
+                    double strikeAngle = angle + strike * (Math.PI * 2.0 / 3.0);
+                    double radius = strike == 1 ? 3.0 : 2.0;
+                    Location boltLocation = position.clone().add(
+                            Math.cos(strikeAngle) * radius,
+                            3.0 + (tick % 4) * 1.5,
+                            Math.sin(strikeAngle) * radius
+                    );
+                    ascendingPlayer.getWorld().strikeLightningEffect(boltLocation);
+                }
+
+                for (int point = 0; point < 4; point++) {
+                    double spiralAngle = angle + point * (Math.PI / 2.0);
+                    double radius = 1.0 + (point % 2) * 0.35;
+                    Location particleLocation = position.clone().add(
+                            Math.cos(spiralAngle) * radius,
+                            0.4 + (point * 0.55),
+                            Math.sin(spiralAngle) * radius
+                    );
+                    ascendingPlayer.getWorld().spawnParticle(
+                            Particle.ELECTRIC_SPARK,
+                            particleLocation,
+                            8,
+                            0.12,
+                            0.18,
+                            0.12,
+                            0.04
+                    );
+                    ascendingPlayer.getWorld().spawnParticle(
+                            Particle.END_ROD,
+                            particleLocation,
+                            2,
+                            0.08,
+                            0.12,
+                            0.08,
+                            0.01
+                    );
+                }
+                ascendingPlayer.setFallDistance(0.0f);
+                tick++;
+            }
+        }.runTaskTimer(plugin, 1L, 1L);
         player.getWorld().playSound(center, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 2.0f, 0.65f);
         player.getWorld().playSound(center, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 2.0f, 0.8f);
     }

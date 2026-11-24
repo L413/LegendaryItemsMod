@@ -95,7 +95,8 @@ public record LegendaryItem(
         if (baseDurability <= 0) {
             baseDurability = Material.NETHERITE_SWORD.getMaxDurability();
         }
-        item.setData(DataComponentTypes.MAX_DAMAGE, (int) Math.ceil(baseDurability * 1.1));
+        double durabilityMultiplier = id.equals("astral_excavator") ? 9.0 : 1.1;
+        item.setData(DataComponentTypes.MAX_DAMAGE, (int) Math.ceil(baseDurability * durabilityMultiplier));
         item.setData(DataComponentTypes.DAMAGE, 0);
         item.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
 

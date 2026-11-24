@@ -866,8 +866,6 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
             }
-            case "astral_excavator" ->
-                    player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 45, 2, true, false, true));
             default -> {
             }
         }
