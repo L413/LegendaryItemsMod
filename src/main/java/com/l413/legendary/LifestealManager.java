@@ -591,17 +591,24 @@ public final class LifestealManager implements Listener {
     }
 
     private boolean sanitizeLegendaryItem(ItemStack item) {
-        if (plugin.getLegendaryId(item) == null || !item.hasItemMeta()) {
+        String legendaryId = plugin.getLegendaryId(item);
+        if (legendaryId == null || !item.hasItemMeta()) {
             return false;
         }
+        LegendaryItem definition = plugin.getRegistry().getById(legendaryId);
+        java.util.Map<org.bukkit.enchantments.Enchantment, Integer> requiredEnchantments = definition == null
+                ? java.util.Map.of()
+                : definition.requiredEnchantments();
         ItemMeta meta = item.getItemMeta();
-        if (meta.getEnchants().isEmpty() && Boolean.FALSE.equals(meta.getEnchantmentGlintOverride())) {
+        if (meta.getEnchants().equals(requiredEnchantments)
+                && Boolean.valueOf(!requiredEnchantments.isEmpty()).equals(meta.getEnchantmentGlintOverride())) {
             return false;
         }
         for (org.bukkit.enchantments.Enchantment enchantment : new java.util.ArrayList<>(meta.getEnchants().keySet())) {
             meta.removeEnchant(enchantment);
         }
-        meta.setEnchantmentGlintOverride(false);
+        requiredEnchantments.forEach((enchantment, level) -> meta.addEnchant(enchantment, level, true));
+        meta.setEnchantmentGlintOverride(!requiredEnchantments.isEmpty());
         item.setItemMeta(meta);
         return true;
     }

@@ -408,6 +408,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             for (Item dropped : world.getEntitiesByClass(Item.class)) {
                 String id = getLegendaryId(dropped.getItemStack());
                 if (id != null) {
+                    dropped.setInvulnerable(true);
                     if (!dropped.isGlowing()) {
                         dropped.setGlowing(true);
                         dropped.setUnlimitedLifetime(true);

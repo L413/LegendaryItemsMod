@@ -181,6 +181,7 @@ public class LegendaryListener implements Listener {
         }
 
         player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 120, 0, true, false, true));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 0, true, false, true));
         Location effectLocation = player.getLocation().add(0.0, 1.0, 0.0);
         player.getWorld().spawnParticle(
                 Particle.DUST,
@@ -439,11 +440,7 @@ public class LegendaryListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityRemoved(EntityRemoveEvent event) {
         EntityRemoveEvent.Cause cause = event.getCause();
-        if (cause != EntityRemoveEvent.Cause.OUT_OF_WORLD
-                && cause != EntityRemoveEvent.Cause.DEATH
-                && cause != EntityRemoveEvent.Cause.DESPAWN
-                && cause != EntityRemoveEvent.Cause.EXPLODE
-                && cause != EntityRemoveEvent.Cause.DISCARD) {
+        if (cause != EntityRemoveEvent.Cause.OUT_OF_WORLD) {
             return;
         }
 
@@ -700,6 +697,7 @@ public class LegendaryListener implements Listener {
         if (plugin.getLegendaryId(itemEntity.getItemStack()) != null) {
             itemEntity.setGlowing(true);
             itemEntity.setUnlimitedLifetime(true);
+            itemEntity.setInvulnerable(true);
             String id = plugin.getLegendaryId(itemEntity.getItemStack());
             Location location = itemEntity.getLocation();
             itemEntity.getWorld().spawnParticle(
@@ -746,25 +744,20 @@ public class LegendaryListener implements Listener {
     public void onItemDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Item itemEntity) {
             String id = plugin.getLegendaryId(itemEntity.getItemStack());
-            if (id != null && isDestroyingItemDamage(event.getCause())) {
-                EntityDamageEvent.DamageCause cause = event.getCause();
+            if (id != null && event.getCause() == EntityDamageEvent.DamageCause.VOID) {
                 itemEntity.remove();
-                Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(
-                        id,
-                        cause == EntityDamageEvent.DamageCause.VOID ? "lost to the void" : "destroyed"
-                ));
+                Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(id, "lost to the void"));
             } else if (id != null) {
                 event.setCancelled(true);
             }
         } else if (event.getEntity() instanceof Trident trident
-                && plugin.getLegendaryId(trident.getItemStack()) != null
-                && isDestroyingItemDamage(event.getCause())) {
-            EntityDamageEvent.DamageCause cause = event.getCause();
+                && plugin.getLegendaryId(trident.getItemStack()) != null) {
             String id = plugin.getLegendaryId(trident.getItemStack());
-            Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(
-                    id,
-                    cause == EntityDamageEvent.DamageCause.VOID ? "lost to the void" : "destroyed"
-            ));
+            if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
+                Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(id, "lost to the void"));
+            } else {
+                event.setCancelled(true);
+            }
         }
     }
 
@@ -775,12 +768,4 @@ public class LegendaryListener implements Listener {
         ));
     }
 
-    private boolean isDestroyingItemDamage(EntityDamageEvent.DamageCause cause) {
-        return cause == EntityDamageEvent.DamageCause.VOID
-                || cause == EntityDamageEvent.DamageCause.FIRE
-                || cause == EntityDamageEvent.DamageCause.FIRE_TICK
-                || cause == EntityDamageEvent.DamageCause.LAVA
-                || cause == EntityDamageEvent.DamageCause.BLOCK_EXPLOSION
-                || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION;
-    }
 }

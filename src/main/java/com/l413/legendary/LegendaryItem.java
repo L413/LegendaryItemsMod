@@ -19,6 +19,7 @@ import io.papermc.paper.datacomponent.item.Equippable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public record LegendaryItem(
@@ -54,14 +55,25 @@ public record LegendaryItem(
                 .decoration(TextDecoration.ITALIC, false)
                 .decoration(TextDecoration.BOLD, true));
         List<Component> itemLore = new ArrayList<>(lore);
-        itemLore.add(Component.text("Cannot be enchanted.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        if (requiredEnchantments().isEmpty()) {
+            itemLore.add(Component.text("Cannot be enchanted.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        } else {
+            String enchantmentLore = id.equals("astral_excavator")
+                    ? "Efficiency V"
+                    : "Wind Burst I";
+            itemLore.add(Component.text("Fixed enchantment(s): " + enchantmentLore + ". No other enchants allowed.", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+        }
         itemLore.add(Component.text("Repair with a Heart of Life in an anvil (+33% max durability).", NamedTextColor.GOLD)
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(itemLore);
         for (Enchantment enchantment : meta.getEnchants().keySet()) {
             meta.removeEnchant(enchantment);
         }
-        meta.setEnchantmentGlintOverride(false);
+        for (Map.Entry<Enchantment, Integer> enchantment : requiredEnchantments().entrySet()) {
+            meta.addEnchant(enchantment.getKey(), enchantment.getValue(), true);
+        }
+        meta.setEnchantmentGlintOverride(!requiredEnchantments().isEmpty());
 
         meta.getPersistentDataContainer().set(plugin.getItemKey(), PersistentDataType.STRING, id);
 
@@ -106,5 +118,13 @@ public record LegendaryItem(
         }
 
         return item;
+    }
+
+    public Map<Enchantment, Integer> requiredEnchantments() {
+        return switch (id) {
+            case "astral_excavator" -> Map.of(Enchantment.EFFICIENCY, 5);
+            case "mjolnir" -> Map.of(Enchantment.WIND_BURST, 1);
+            default -> Map.of();
+        };
     }
 }

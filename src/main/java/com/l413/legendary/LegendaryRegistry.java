@@ -36,7 +36,7 @@ public class LegendaryRegistry {
                         Component.text("Held: Speed I, Jump Boost I, Night Vision.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("On hit: Regeneration for 2 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("15% chance to deal 2 bonus damage with an astral burst.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak + right-click: Astral Ward grants Absorption for 6 seconds (30s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click: Astral Ward grants Absorption for 6 seconds and Regeneration I for 5 seconds (30s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Projects a sky beacon and reveals your location.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
@@ -150,7 +150,7 @@ public class LegendaryRegistry {
                 1.2,
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Haste III while held; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Durability: 10% above a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
