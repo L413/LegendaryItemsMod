@@ -746,8 +746,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
             int allowedCount = 1;
             if ("armor_tool".equalsIgnoreCase(getConfig().getString("legendary.overload-rule", "armor_tool"))) {
-                allowedCount = (hasEquippedLegendaryArmor(player) ? 1 : 0)
-                        + (hasHeldLegendaryTool(player) ? 1 : 0);
+                allowedCount = hasLegendaryArmor(player) && hasLegendaryTool(player) ? 2 : 1;
             }
 
             if (legendaryCount > allowedCount) {
@@ -759,26 +758,29 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    private boolean hasEquippedLegendaryArmor(Player player) {
-        for (ItemStack stack : player.getInventory().getArmorContents()) {
-            String id = getLegendaryId(stack);
-            LegendaryItem item = id == null ? null : registry.getById(id);
-            if (item != null && item.equipmentSlot() != null) {
-                return true;
+    private boolean hasLegendaryArmor(Player player) {
+        return hasLegendaryCategory(player, true);
+    }
+
+    private boolean hasLegendaryTool(Player player) {
+        return hasLegendaryCategory(player, false);
+    }
+
+    private boolean hasLegendaryCategory(Player player, boolean armor) {
+        for (ItemStack[] contents : List.of(
+                player.getInventory().getStorageContents(),
+                player.getInventory().getArmorContents(),
+                player.getInventory().getExtraContents()
+        )) {
+            for (ItemStack stack : contents) {
+                String id = getLegendaryId(stack);
+                LegendaryItem item = id == null ? null : registry.getById(id);
+                if (item != null && (item.equipmentSlot() != null) == armor) {
+                    return true;
+                }
             }
         }
         return false;
-    }
-
-    private boolean hasHeldLegendaryTool(Player player) {
-        return isLegendaryTool(player.getInventory().getItemInMainHand())
-                || isLegendaryTool(player.getInventory().getItemInOffHand());
-    }
-
-    private boolean isLegendaryTool(ItemStack stack) {
-        String id = getLegendaryId(stack);
-        LegendaryItem item = id == null ? null : registry.getById(id);
-        return item != null && item.equipmentSlot() == null;
     }
 
     public int destroyAllLegendaries() {

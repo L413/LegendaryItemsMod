@@ -94,7 +94,7 @@ public final class LegendarySettingsMenu implements Listener {
                 Material.IRON_CHESTPLATE,
                 "Carry rule: " + (getOverloadRule().equals("armor_tool") ? "one armor + one tool" : "one overall"),
                 getOverloadRule().equals("armor_tool")
-                        ? "Allows one equipped legendary armor and one held legendary tool."
+                        ? "Allows one legendary armor and one legendary tool anywhere in your inventory."
                         : "Allows one legendary item total.",
                 "Click to switch rule"
         ));
