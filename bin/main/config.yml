@@ -1,2 +1,17 @@
 crafted:
   astral_sovereign: false
+
+legendary:
+  logout-behavior: beacon
+  tracker-coordinate-rounding: 250
+  offline-beacons: {}
+
+lifesteal:
+  # Counts are health points/half-hearts: 20 = normal, 40 = double normal.
+  heart-units-version: 2
+  min-hearts: 0
+  max-hearts: 40
+  starting-hearts: 20
+  zero-hearts-action: ban
+  zero-hearts-ban-seconds: 86400
+  players: {}

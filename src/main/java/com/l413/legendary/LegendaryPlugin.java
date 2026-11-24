@@ -24,6 +24,10 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.Trident;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -48,7 +52,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-public class LegendaryPlugin extends JavaPlugin {
+public class LegendaryPlugin extends JavaPlugin implements Listener {
     // Tune these two constants to adjust search area size and boss bar trigger range
     private static final int COORD_ROUND_STEP = 250;
     private static final double PROXIMITY_RADIUS = 250.0;
@@ -56,11 +60,15 @@ public class LegendaryPlugin extends JavaPlugin {
     private NamespacedKey itemKey;
     private NamespacedKey shurikenProjectileKey;
     private LegendaryRegistry registry;
+    private LifestealManager lifestealManager;
+    private LegendarySettingsMenu legendarySettingsMenu;
     private final Map<UUID, BossBar> activeBossBars = new HashMap<>();
+    private final Map<String, OfflineBeacon> offlineBeacons = new HashMap<>();
     private final Set<String> trackedGlowEntries = new HashSet<>();
     private final Map<String, Long> ownershipAnnouncementCooldowns = new HashMap<>();
 
     private record TrackedTarget(String id, String displayName, Location location, UUID holderUuid, String statusLabel) {}
+    private record OfflineBeacon(UUID ownerId, String worldName, double x, double y, double z) {}
 
     @Override
     public void onEnable() {
@@ -68,73 +76,18 @@ public class LegendaryPlugin extends JavaPlugin {
         this.itemKey = new NamespacedKey(this, "legendary_id");
         this.shurikenProjectileKey = new NamespacedKey(this, "shuriken_projectile");
         this.registry = new LegendaryRegistry(this);
+        this.lifestealManager = new LifestealManager(this);
+        this.legendarySettingsMenu = new LegendarySettingsMenu(this);
+        loadOfflineBeacons();
+        this.lifestealManager.registerHeartRecipe();
 
         Bukkit.getPluginManager().registerEvents(new LegendaryListener(this), this);
         Bukkit.getPluginManager().registerEvents(new LegendaryStorageListener(this), this);
+        Bukkit.getPluginManager().registerEvents(this.lifestealManager, this);
+        Bukkit.getPluginManager().registerEvents(this.legendarySettingsMenu, this);
+        Bukkit.getPluginManager().registerEvents(this, this);
 
-        this.registerCommand("givelegendary", new BasicCommand() {
-            @Override
-            public void execute(CommandSourceStack source, String[] args) {
-                if (!source.getSender().isOp()) {
-                    source.getSender().sendMessage(Component.text("You must be an operator to use this command.", NamedTextColor.RED));
-                    return;
-                }
-                if (!(source.getSender() instanceof Player player)) {
-                    source.getSender().sendMessage(Component.text("Only players can receive legendary items.", NamedTextColor.RED));
-                    return;
-                }
-                if (args.length != 1) {
-                    sendAvailableIds(source);
-                    return;
-                }
-
-                LegendaryItem item = registry.getById(args[0].toLowerCase());
-                if (item == null) {
-                    sendAvailableIds(source);
-                    return;
-                }
-                if (!claimLegendary(item.id(), player)) {
-                    player.sendMessage(Component.text("That legendary item is already claimed.", NamedTextColor.RED));
-                    return;
-                }
-
-                player.getInventory().addItem(item.createItemStack(LegendaryPlugin.this));
-                player.sendMessage(Component.text("Gave " + item.displayName() + " (" + item.id() + ").", NamedTextColor.GREEN));
-            }
-
-            @Override
-            public Collection<String> suggest(CommandSourceStack source, String[] args) {
-                return registry.getAll().stream()
-                        .map(LegendaryItem::id)
-                        .collect(Collectors.toList());
-            }
-
-            private void sendAvailableIds(CommandSourceStack source) {
-                String available = registry.getAll().stream()
-                        .map(LegendaryItem::id)
-                        .collect(Collectors.joining(", "));
-                source.getSender().sendMessage(Component.text(
-                        "Unknown or missing item ID. Available IDs: " + (available.isEmpty() ? "(none)" : available),
-                        NamedTextColor.RED
-                ));
-            }
-        });
-
-        this.registerCommand("destroylegendaries", new BasicCommand() {
-            @Override
-            public void execute(CommandSourceStack source, String[] args) {
-                if (!source.getSender().isOp()) {
-                    source.getSender().sendMessage(Component.text("You must be an operator to use this command.", NamedTextColor.RED));
-                    return;
-                }
-
-                int destroyed = destroyAllLegendaries();
-                source.getSender().sendMessage(Component.text(
-                        "Destroyed all legendary items and released " + destroyed + " item type(s).",
-                        NamedTextColor.GREEN
-                ));
-            }
-        });
+        registerCommands();
 
         // Fast visual loop (every 10 ticks / 0.5s): sky beacons, glowing, and proximity boss bar
         Bukkit.getScheduler().runTaskTimer(this, this::updateBeaconsAndProximity, 20L, 10L);
@@ -153,6 +106,264 @@ public class LegendaryPlugin extends JavaPlugin {
             removeBossBar(player);
         }
         activeBossBars.clear();
+    }
+
+    @EventHandler
+    public void onLegendaryOwnerQuit(PlayerQuitEvent event) {
+        handleLegendaryLogout(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onLegendaryOwnerJoin(PlayerJoinEvent event) {
+        handleLegendaryLogin(event.getPlayer());
+    }
+
+    private void registerCommands() {
+        this.registerCommand("lifesteal", new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                if (!source.getSender().isOp()) {
+                    source.getSender().sendMessage(Component.text("You must be an operator to use this command.", NamedTextColor.RED));
+                    return;
+                }
+                String subcommand = args.length == 0 ? "settings" : args[0].toLowerCase();
+                switch (subcommand) {
+                    case "settings" -> {
+                        if (source.getSender() instanceof Player player) {
+                            lifestealManager.openSettings(player);
+                        } else {
+                            source.getSender().sendMessage(Component.text("Only players can open the Lifesteal settings.", NamedTextColor.RED));
+                        }
+                    }
+                    case "give", "giveheart" -> {
+                        if (args.length != 1 || !(source.getSender() instanceof Player player)) {
+                            source.getSender().sendMessage(Component.text("Usage: /lifesteal give", NamedTextColor.RED));
+                            return;
+                        }
+                        lifestealManager.giveHeart(player);
+                    }
+                    case "set", "sethearts" -> setHeartsCommand(source, args);
+                    default -> source.getSender().sendMessage(Component.text(
+                            "Usage: /lifesteal <settings|give|set>",
+                            NamedTextColor.YELLOW
+                    ));
+                }
+            }
+
+            @Override
+            public Collection<String> suggest(CommandSourceStack source, String[] args) {
+                if (args.length <= 1) {
+                    return List.of("settings", "give", "set");
+                }
+                if (args.length == 2 && ("set".equalsIgnoreCase(args[0]) || "sethearts".equalsIgnoreCase(args[0]))) {
+                    return Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+                }
+                return List.of();
+            }
+        });
+
+        this.registerCommand("legendary", new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                if (!source.getSender().isOp()) {
+                    source.getSender().sendMessage(Component.text("You must be an operator to use this command.", NamedTextColor.RED));
+                    return;
+                }
+                if (args.length == 0) {
+                    source.getSender().sendMessage(Component.text(
+                            "Usage: /legendary <give|destroyall|settings>",
+                            NamedTextColor.YELLOW
+                    ));
+                    return;
+                }
+                switch (args[0].toLowerCase()) {
+                    case "settings" -> {
+                        if (source.getSender() instanceof Player player) {
+                            legendarySettingsMenu.openSettings(player);
+                        } else {
+                            source.getSender().sendMessage(Component.text("Only players can open Legendary settings.", NamedTextColor.RED));
+                        }
+                    }
+                    case "give" -> giveLegendaryCommand(source, args);
+                    case "destroyall" -> {
+                        int destroyed = destroyAllLegendaries();
+                        source.getSender().sendMessage(Component.text(
+                                "Destroyed all legendary items and released " + destroyed + " item type(s).",
+                                NamedTextColor.GREEN
+                        ));
+                    }
+                    default -> source.getSender().sendMessage(Component.text(
+                            "Usage: /legendary <give|destroyall|settings>",
+                            NamedTextColor.YELLOW
+                    ));
+                }
+            }
+
+            @Override
+            public Collection<String> suggest(CommandSourceStack source, String[] args) {
+                if (args.length <= 1) {
+                    return List.of("give", "destroyall", "settings");
+                }
+                if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
+                    return registry.getAll().stream().map(LegendaryItem::id).toList();
+                }
+                return List.of();
+            }
+        });
+    }
+
+    private void setHeartsCommand(CommandSourceStack source, String[] args) {
+        if (args.length != 3) {
+            source.getSender().sendMessage(Component.text(
+                    "Usage: /lifesteal set <player> <half-hearts|reset>",
+                    NamedTextColor.RED
+            ));
+            return;
+        }
+
+        org.bukkit.OfflinePlayer target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            target = Bukkit.getOfflinePlayerIfCached(args[1]);
+        }
+        if (target == null) {
+            source.getSender().sendMessage(Component.text(
+                    "Player not found. They must be online or have joined this server before.",
+                    NamedTextColor.RED
+            ));
+            return;
+        }
+
+        if ("reset".equalsIgnoreCase(args[2])) {
+            lifestealManager.resetHeartCount(target);
+            source.getSender().sendMessage(Component.text(
+                    "Reset " + args[1] + "'s heart count to the configured starting amount.",
+                    NamedTextColor.GREEN
+            ));
+            return;
+        }
+
+        try {
+            int halfHearts = Integer.parseInt(args[2]);
+            if (halfHearts < 0) {
+                throw new NumberFormatException();
+            }
+            lifestealManager.setHeartCount(target, halfHearts);
+            source.getSender().sendMessage(Component.text(
+                    "Set " + args[1] + "'s heart count to " + halfHearts + " half-hearts.",
+                    NamedTextColor.GREEN
+            ));
+        } catch (NumberFormatException exception) {
+            source.getSender().sendMessage(Component.text(
+                    "Heart count must be a non-negative whole number of half-hearts or 'reset'.",
+                    NamedTextColor.RED
+            ));
+        }
+    }
+
+    private void giveLegendaryCommand(CommandSourceStack source, String[] args) {
+        if (args.length != 2 || !(source.getSender() instanceof Player player)) {
+            source.getSender().sendMessage(Component.text("Usage: /legendary give <item_id> (players only)", NamedTextColor.RED));
+            return;
+        }
+        LegendaryItem item = registry.getById(args[1].toLowerCase());
+        if (item == null) {
+            String available = registry.getAll().stream().map(LegendaryItem::id).collect(Collectors.joining(", "));
+            source.getSender().sendMessage(Component.text("Unknown item ID. Available IDs: " + available, NamedTextColor.RED));
+            return;
+        }
+        if (!claimLegendary(item.id(), player)) {
+            player.sendMessage(Component.text("That legendary item is already claimed.", NamedTextColor.RED));
+            return;
+        }
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(item.createItemStack(this));
+        overflow.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
+        player.sendMessage(Component.text("Gave " + item.displayName() + " (" + item.id() + ").", NamedTextColor.GREEN));
+    }
+
+    public void handleLegendaryLogout(Player player) {
+        String behavior = getConfig().getString("legendary.logout-behavior", "beacon");
+        Location logoutLocation = player.getLocation();
+        boolean changed = false;
+        for (int slot = 0; slot < player.getInventory().getSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            String id = getLegendaryId(stack);
+            if (id == null) {
+                continue;
+            }
+            if ("drop".equalsIgnoreCase(behavior)) {
+                player.getWorld().dropItemNaturally(logoutLocation, stack.clone());
+                player.getInventory().setItem(slot, null);
+                changed = true;
+            } else if ("beacon".equalsIgnoreCase(behavior)) {
+                offlineBeacons.put(id, new OfflineBeacon(
+                        player.getUniqueId(),
+                        logoutLocation.getWorld().getName(),
+                        logoutLocation.getX(),
+                        logoutLocation.getY(),
+                        logoutLocation.getZ()
+                ));
+                changed = true;
+            } else {
+                offlineBeacons.remove(id);
+                changed = true;
+            }
+        }
+        if (changed) {
+            saveOfflineBeacons();
+        }
+    }
+
+    public void handleLegendaryLogin(Player player) {
+        boolean changed = offlineBeacons.entrySet().removeIf(entry -> entry.getValue().ownerId().equals(player.getUniqueId()));
+        if (changed) {
+            saveOfflineBeacons();
+        }
+    }
+
+    private void loadOfflineBeacons() {
+        org.bukkit.configuration.ConfigurationSection players = getConfig().getConfigurationSection("legendary.offline-beacons");
+        if (players == null) {
+            return;
+        }
+        for (String ownerKey : players.getKeys(false)) {
+            UUID ownerId;
+            try {
+                ownerId = UUID.fromString(ownerKey);
+            } catch (IllegalArgumentException exception) {
+                getLogger().warning("Ignoring invalid offline beacon owner UUID: " + ownerKey);
+                continue;
+            }
+            org.bukkit.configuration.ConfigurationSection items = players.getConfigurationSection(ownerKey);
+            if (items == null) {
+                continue;
+            }
+            for (String id : items.getKeys(false)) {
+                org.bukkit.configuration.ConfigurationSection beacon = items.getConfigurationSection(id);
+                if (beacon == null || beacon.getString("world") == null) {
+                    continue;
+                }
+                offlineBeacons.put(id, new OfflineBeacon(
+                        ownerId,
+                        beacon.getString("world"),
+                        beacon.getDouble("x"),
+                        beacon.getDouble("y"),
+                        beacon.getDouble("z")
+                ));
+            }
+        }
+    }
+
+    private void saveOfflineBeacons() {
+        getConfig().set("legendary.offline-beacons", null);
+        for (Map.Entry<String, OfflineBeacon> entry : offlineBeacons.entrySet()) {
+            OfflineBeacon beacon = entry.getValue();
+            String path = "legendary.offline-beacons." + beacon.ownerId() + "." + entry.getKey();
+            getConfig().set(path + ".world", beacon.worldName());
+            getConfig().set(path + ".x", beacon.x());
+            getConfig().set(path + ".y", beacon.y());
+            getConfig().set(path + ".z", beacon.z());
+        }
+        saveConfig();
     }
 
     private List<TrackedTarget> scanActiveTargets() {
@@ -203,6 +414,13 @@ public class LegendaryPlugin extends JavaPlugin {
                     }
                     spawnBeaconBeam(dropped.getLocation(), id);
                 }
+            }
+        }
+        for (Map.Entry<String, OfflineBeacon> entry : offlineBeacons.entrySet()) {
+            OfflineBeacon beacon = entry.getValue();
+            World world = Bukkit.getWorld(beacon.worldName());
+            if (world != null) {
+                spawnBeaconBeam(new Location(world, beacon.x(), beacon.y(), beacon.z()), entry.getKey());
             }
         }
         updateLegendaryGlowTeams();
@@ -256,11 +474,16 @@ public class LegendaryPlugin extends JavaPlugin {
     }
 
     private void updateScoreboards() {
-        List<TrackedTarget> targets = scanActiveTargets();
+        List<LegendaryItem> craftedItems = registry.getAll().stream()
+                .filter(item -> isCrafted(item.id()))
+                .toList();
+        Map<String, TrackedTarget> targetsById = new HashMap<>();
+        for (TrackedTarget target : scanActiveTargets()) {
+            targetsById.putIfAbsent(target.id(), target);
+        }
 
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (targets.isEmpty()) {
-                // Clear tracker scoreboard when no legendary items are currently active/online
+            if (craftedItems.isEmpty()) {
                 if (player.getScoreboard().getObjective("legendary_track") != null) {
                     player.setScoreboard(Bukkit.getScoreboardManager().getMainScoreboard());
                 }
@@ -271,20 +494,26 @@ public class LegendaryPlugin extends JavaPlugin {
             Objective obj = board.registerNewObjective(
                     "legendary_track",
                     Criteria.DUMMY,
-                    Component.text("⚡ LEGENDARY TRACKER ⚡", NamedTextColor.GOLD, TextDecoration.BOLD)
+                    Component.text("⚡ TRACKER ⚡", NamedTextColor.GOLD, TextDecoration.BOLD)
             );
             obj.setDisplaySlot(DisplaySlot.SIDEBAR);
 
-            int scoreLine = targets.size() * 4;
-            for (TrackedTarget target : targets) {
-                int approxX = roundCoord(target.location().getBlockX());
-                int approxZ = roundCoord(target.location().getBlockZ());
-                String dim = formatDimension(target.location().getWorld().getEnvironment());
-
-                obj.getScore("§6§l" + target.displayName()).setScore(scoreLine--);
-                obj.getScore("§7Holder: §e" + target.statusLabel()).setScore(scoreLine--);
-                obj.getScore("§7Zone: §b~" + approxX + ", ~" + approxZ + " §8(" + dim + ")").setScore(scoreLine--);
-                obj.getScore("§r" + " ".repeat(Math.max(1, scoreLine))).setScore(scoreLine--);
+            int scoreLine = craftedItems.size();
+            for (LegendaryItem item : craftedItems) {
+                TrackedTarget target = targetsById.get(item.id());
+                String icon = target == null ? "§8?" : target.holderUuid() == null ? "§b◆" : "§e☻";
+                String line = icon + " §6" + item.displayName();
+                if (target == null) {
+                    line += " §8| §7unlocated";
+                } else {
+                    line += target.holderUuid() == null
+                            ? " §8| §7ground"
+                            : " §8| §e" + target.statusLabel();
+                    int approxX = roundCoord(target.location().getBlockX());
+                    int approxZ = roundCoord(target.location().getBlockZ());
+                    line += " §8~§b" + approxX + "," + approxZ;
+                }
+                obj.getScore(line).setScore(scoreLine--);
             }
 
             player.setScoreboard(board);
@@ -292,7 +521,9 @@ public class LegendaryPlugin extends JavaPlugin {
     }
 
     private int roundCoord(int coord) {
-        return Math.round((float) coord / COORD_ROUND_STEP) * COORD_ROUND_STEP;
+        int step = Math.max(50, Math.min(1000,
+                getConfig().getInt("legendary.tracker-coordinate-rounding", COORD_ROUND_STEP)));
+        return Math.round((float) coord / step) * step;
     }
 
     private void spawnBeaconBeam(Location base, String legendaryId) {
@@ -634,6 +865,8 @@ public class LegendaryPlugin extends JavaPlugin {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
             }
+            case "astral_excavator" ->
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 45, 2, true, false, true));
             default -> {
             }
         }
@@ -760,6 +993,9 @@ public class LegendaryPlugin extends JavaPlugin {
         }
         getConfig().set("crafted." + id, false);
         getConfig().set("owners." + id, null);
+        if (offlineBeacons.remove(id) != null) {
+            saveOfflineBeacons();
+        }
         saveConfig();
 
         LegendaryItem item = registry.getById(id);

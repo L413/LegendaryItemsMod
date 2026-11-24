@@ -1,0 +1,14 @@
+{
+  "layers": {
+    "humanoid": [
+      {
+        "texture": "legendary:astral"
+      }
+    ],
+    "humanoid_leggings": [
+      {
+        "texture": "legendary:astral"
+      }
+    ]
+  }
+}

@@ -17,6 +17,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import io.papermc.paper.datacomponent.item.Equippable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -52,7 +53,15 @@ public record LegendaryItem(
         meta.displayName(Component.text(displayName, NamedTextColor.GOLD)
                 .decoration(TextDecoration.ITALIC, false)
                 .decoration(TextDecoration.BOLD, true));
-        meta.lore(lore);
+        List<Component> itemLore = new ArrayList<>(lore);
+        itemLore.add(Component.text("Cannot be enchanted.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        itemLore.add(Component.text("Repair with a Heart of Life in an anvil (+33% max durability).", NamedTextColor.GOLD)
+                .decoration(TextDecoration.ITALIC, false));
+        meta.lore(itemLore);
+        for (Enchantment enchantment : meta.getEnchants().keySet()) {
+            meta.removeEnchant(enchantment);
+        }
+        meta.setEnchantmentGlintOverride(false);
 
         meta.getPersistentDataContainer().set(plugin.getItemKey(), PersistentDataType.STRING, id);
 
@@ -69,12 +78,6 @@ public record LegendaryItem(
             meta.addAttributeModifier(Attribute.MAX_HEALTH,
                     new AttributeModifier(healthKey, maxHealthBonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.CHEST));
         }
-        if ("astral_excavator".equals(id)) {
-            meta.addEnchant(Enchantment.EFFICIENCY, 5, true);
-        } else if ("mjolnir".equals(id)) {
-            meta.addEnchant(Enchantment.WIND_BURST, 1, true);
-        }
-
         item.setItemMeta(meta);
         int baseDurability = baseMaterial.getMaxDurability();
         if (baseDurability <= 0) {

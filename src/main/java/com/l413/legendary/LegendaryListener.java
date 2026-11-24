@@ -61,7 +61,7 @@ public class LegendaryListener implements Listener {
     private static final int SHURIKEN_ITEM_COOLDOWN_TICKS = 20;
     private static final int SHURIKEN_BURST_SIZE = 3;
     private static final int SHURIKEN_SPECIAL_SIZE = 12;
-    private static final double SHURIKEN_DAMAGE = 6.0;
+    private static final double SHURIKEN_DAMAGE = 10.0;
     private final LegendaryPlugin plugin;
     private final Map<UUID, BlockFace> excavatorMiningFaces = new HashMap<>();
     private final Map<UUID, Long> mjolnirLightningCooldowns = new HashMap<>();
@@ -196,10 +196,13 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateShurikenBurst(Player player) {
-        if (player.hasCooldown(Material.SNOWBALL)) {
+        boolean cooldownsEnabled = player.getGameMode() != org.bukkit.GameMode.CREATIVE;
+        if (cooldownsEnabled && player.hasCooldown(Material.SNOWBALL)) {
             return;
         }
-        player.setCooldown(Material.SNOWBALL, SHURIKEN_ITEM_COOLDOWN_TICKS);
+        if (cooldownsEnabled) {
+            player.setCooldown(Material.SNOWBALL, SHURIKEN_ITEM_COOLDOWN_TICKS);
+        }
 
         new BukkitRunnable() {
             private int shots;
@@ -309,6 +312,10 @@ public class LegendaryListener implements Listener {
     }
 
     private boolean tryUseAbility(Player player, String abilityId, long cooldownMillis) {
+        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+            return true;
+        }
+
         UUID playerId = player.getUniqueId();
         Map<UUID, Long> cooldowns = abilityCooldowns.computeIfAbsent(abilityId, key -> new HashMap<>());
         long now = System.currentTimeMillis();
@@ -548,6 +555,11 @@ public class LegendaryListener implements Listener {
     }
 
     private void applyMjolnirHit(Player attacker, LivingEntity target) {
+        if (attacker.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+            strikeMjolnirTarget(target);
+            return;
+        }
+
         long now = System.currentTimeMillis();
         long nextAvailable = mjolnirLightningCooldowns.getOrDefault(attacker.getUniqueId(), 0L);
         if (now < nextAvailable) {
@@ -558,6 +570,10 @@ public class LegendaryListener implements Listener {
                 attacker.getUniqueId(),
                 now + MJOLNIR_LIGHTNING_COOLDOWN_MILLIS
         );
+        strikeMjolnirTarget(target);
+    }
+
+    private void strikeMjolnirTarget(LivingEntity target) {
         target.getWorld().strikeLightning(target.getLocation());
         var effectLocation = target.getLocation().add(0.0, 1.0, 0.0);
         for (int strike = 0; strike < 4; strike++) {
