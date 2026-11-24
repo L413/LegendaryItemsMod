@@ -3,7 +3,7 @@
   "credit": "Made with Blockbench",
   "textures": {
     "0": "legendary:item/storm_piercer",
-    "particle": "legendary:item/storm_piercer_1"
+    "particle": "legendary:item/storm_piercer"
   },
   "elements": [
     {

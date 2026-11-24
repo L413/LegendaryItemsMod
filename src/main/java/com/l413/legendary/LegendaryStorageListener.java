@@ -9,6 +9,7 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Container;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -23,6 +24,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,15 +125,13 @@ public class LegendaryStorageListener implements Listener {
         }
 
         event.setCancelled(true);
-        Inventory initiator = event.getInitiator();
-        Location location = initiator == null ? null : initiator.getLocation();
+        Inventory target = isStorage(event.getDestination()) ? event.getDestination() : event.getSource();
+        Location location = target.getLocation();
         if (location == null) {
-            location = event.getSource().getLocation();
+            target = event.getSource();
+            location = target.getLocation();
         }
-        if (location == null) {
-            location = event.getDestination().getLocation();
-        }
-        igniteBlockAbove(location);
+        explodeStorage(target, location);
     }
 
     private boolean isStorage(Inventory inventory) {
@@ -171,28 +172,84 @@ public class LegendaryStorageListener implements Listener {
             return;
         }
 
-        Block block = location.getBlock();
-        Material type = block.getType();
-        if (type == Material.CHEST || type == Material.TRAPPED_CHEST || type == Material.BARREL) {
-            dropContainerContents(inventory, location);
-            block.setType(Material.FIRE);
-            playBurnEffects(location);
-        } else {
-            igniteBlockAbove(location);
-        }
-
+        explodeStorage(inventory, location);
         player.sendMessage(STORAGE_WARNING);
         player.sendActionBar(STORAGE_WARNING);
     }
 
+    private void explodeStorage(Inventory inventory, Location location) {
+        if (location == null || location.getWorld() == null) {
+            plugin.getLogger().warning("Could not locate a storage container to explode.");
+            return;
+        }
+
+        Block center = location.getBlock();
+        InventoryType type = inventory == null ? null : inventory.getType();
+        boolean enderChest = type == InventoryType.ENDER_CHEST || center.getType() == Material.ENDER_CHEST;
+        if (inventory != null && !enderChest) {
+            dropContainerContents(inventory, location);
+        }
+
+        Material containerMaterial = center.getType();
+        if (center.getState() instanceof Container) {
+            center.setType(Material.AIR, false);
+            if (containerMaterial.isItem()) {
+                location.getWorld().dropItemNaturally(center.getLocation().add(0.5, 0.5, 0.5), new ItemStack(containerMaterial));
+            }
+        }
+
+        breakBlocksWithoutDamagingContainers(center);
+        playBurnEffects(location);
+    }
+
     private void dropContainerContents(Inventory inventory, Location location) {
-        List<ItemStack> contents = java.util.Arrays.stream(inventory.getContents())
-                .filter(stack -> stack != null && !stack.getType().isAir())
-                .map(ItemStack::clone)
-                .toList();
+        List<ItemStack> contents = new ArrayList<>();
+        for (ItemStack stack : inventory.getContents()) {
+            if (stack != null && !stack.getType().isAir()) {
+                contents.add(stack.clone());
+            }
+        }
         inventory.clear();
         for (ItemStack stack : contents) {
-            location.getWorld().dropItemNaturally(location, stack);
+            location.getWorld().dropItemNaturally(location.clone().add(0.5, 0.5, 0.5), stack);
+        }
+    }
+
+    private void breakBlocksWithoutDamagingContainers(Block center) {
+        World world = center.getWorld();
+        int radius = 4;
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius; y <= radius; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    if (x == 0 && y == 0 && z == 0
+                            || x * x + y * y + z * z > radius * radius) {
+                        continue;
+                    }
+
+                    Block block = world.getBlockAt(
+                            center.getX() + x,
+                            center.getY() + y,
+                            center.getZ() + z
+                    );
+                    Material material = block.getType();
+                    if (material.isAir() || !material.isSolid() || block.getState() instanceof Container
+                            || material == Material.BEDROCK
+                            || material == Material.OBSIDIAN
+                            || material == Material.CRYING_OBSIDIAN
+                            || material == Material.RESPAWN_ANCHOR
+                            || material == Material.END_PORTAL_FRAME
+                            || material == Material.BARRIER) {
+                        continue;
+                    }
+
+                    Collection<ItemStack> drops = block.getDrops();
+                    List<ItemStack> safeDrops = drops.stream().map(ItemStack::clone).toList();
+                    block.setType(Material.AIR, false);
+                    for (ItemStack drop : safeDrops) {
+                        world.dropItemNaturally(block.getLocation().add(0.5, 0.5, 0.5), drop);
+                    }
+                }
+            }
         }
     }
 
@@ -202,12 +259,7 @@ public class LegendaryStorageListener implements Listener {
             return;
         }
 
-        Location centered = location.getBlock().getLocation().add(0.5, 0.5, 0.5);
-        Block above = location.getBlock().getRelative(0, 1, 0);
-        if (above.getType().isAir()) {
-            above.setType(Material.FIRE);
-        }
-        playBurnEffects(centered);
+        playBurnEffects(location);
     }
 
     private void playBurnEffects(Location location) {
@@ -218,7 +270,9 @@ public class LegendaryStorageListener implements Listener {
         Location center = location.getBlock().getLocation().add(0.5, 0.5, 0.5);
         world.spawnParticle(Particle.FLAME, center, 24, 0.35, 0.35, 0.35, 0.03);
         world.spawnParticle(Particle.LAVA, center, 8, 0.3, 0.3, 0.3, 0.0);
+        world.spawnParticle(Particle.EXPLOSION, center, 1);
         world.playSound(center, Sound.ITEM_FIRECHARGE_USE, 1.0f, 1.0f);
         world.playSound(center, Sound.ENTITY_BLAZE_SHOOT, 1.0f, 1.0f);
+        world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.0f);
     }
 }

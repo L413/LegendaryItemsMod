@@ -10,18 +10,26 @@ import net.kyori.adventure.text.format.TextDecoration;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Chunk;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.World;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.Container;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.ItemFrame;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Trident;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -30,6 +38,7 @@ import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
@@ -37,8 +46,11 @@ import org.bukkit.util.Vector;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -52,6 +64,8 @@ public class LegendaryPlugin extends JavaPlugin {
     private LegendaryRegistry registry;
     private final Map<UUID, BossBar> activeBossBars = new HashMap<>();
     private final Map<UUID, TrackedStormPiercer> stormPiercerDisplays = new HashMap<>();
+    private final Set<String> trackedGlowEntries = new HashSet<>();
+    private final Map<String, Long> ownershipAnnouncementCooldowns = new HashMap<>();
 
     private record TrackedTarget(String id, String displayName, Location location, UUID holderUuid, String statusLabel) {}
 
@@ -95,6 +109,10 @@ public class LegendaryPlugin extends JavaPlugin {
                     sendAvailableIds(source);
                     return;
                 }
+                if (!claimLegendary(item.id(), player)) {
+                    player.sendMessage(Component.text("That legendary item is already claimed.", NamedTextColor.RED));
+                    return;
+                }
 
                 player.getInventory().addItem(item.createItemStack(LegendaryPlugin.this));
                 player.sendMessage(Component.text("Gave " + item.displayName() + " (" + item.id() + ").", NamedTextColor.GREEN));
@@ -114,6 +132,22 @@ public class LegendaryPlugin extends JavaPlugin {
                 source.getSender().sendMessage(Component.text(
                         "Unknown or missing item ID. Available IDs: " + (available.isEmpty() ? "(none)" : available),
                         NamedTextColor.RED
+                ));
+            }
+        });
+
+        this.registerCommand("destroylegendaries", new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                if (!source.getSender().isOp()) {
+                    source.getSender().sendMessage(Component.text("You must be an operator to use this command.", NamedTextColor.RED));
+                    return;
+                }
+
+                int destroyed = destroyAllLegendaries();
+                source.getSender().sendMessage(Component.text(
+                        "Destroyed all legendary items and released " + destroyed + " item type(s).",
+                        NamedTextColor.GREEN
                 ));
             }
         });
@@ -163,18 +197,30 @@ public class LegendaryPlugin extends JavaPlugin {
             return;
         }
 
-        ItemDisplay display = trident.getWorld().spawn(trident.getLocation(), ItemDisplay.class);
-        display.setItemStack(trident.getItemStack().clone());
-        display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-        display.setBillboard(Display.Billboard.FIXED);
-        display.setGlowing(true);
-        display.setGlowColorOverride(Color.AQUA);
-        display.setTeleportDuration(1);
-        display.setInterpolationDelay(0);
-        display.setInterpolationDuration(1);
-        display.getPersistentDataContainer().set(thrownTridentKey, PersistentDataType.STRING, trident.getUniqueId().toString());
+        LegendaryItem stormPiercer = registry.getById("storm_piercer");
+        if (stormPiercer == null) {
+            getLogger().warning("Cannot display thrown storm_piercer: item is not registered.");
+            return;
+        }
+        ItemDisplay display = trident.getWorld().spawn(trident.getLocation(), ItemDisplay.class, spawnedDisplay -> {
+            spawnedDisplay.setVisibleByDefault(true);
+            spawnedDisplay.setInvisible(false);
+            spawnedDisplay.setItemStack(stormPiercer.createItemStack(this));
+            spawnedDisplay.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            spawnedDisplay.setBillboard(Display.Billboard.FIXED);
+            spawnedDisplay.setGlowing(true);
+            spawnedDisplay.setGlowColorOverride(Color.AQUA);
+            spawnedDisplay.setTeleportDuration(1);
+            spawnedDisplay.setInterpolationDelay(0);
+            spawnedDisplay.setInterpolationDuration(1);
+            spawnedDisplay.getPersistentDataContainer().set(
+                    thrownTridentKey,
+                    PersistentDataType.STRING,
+                    trident.getUniqueId().toString()
+            );
+        });
         hideStormPiercer(trident);
-        trident.setInvisible(true);
+        showStormPiercerDisplay(display);
         trident.setGlowing(true);
         UUID tridentId = trident.getUniqueId();
         TrackedStormPiercer tracked = new TrackedStormPiercer(display);
@@ -205,6 +251,18 @@ public class LegendaryPlugin extends JavaPlugin {
                 }
             }
         }
+        for (TrackedStormPiercer tracked : stormPiercerDisplays.values()) {
+            if (tracked.display.isValid()) {
+                player.showEntity(this, tracked.display);
+            }
+        }
+    }
+
+    private void showStormPiercerDisplay(ItemDisplay display) {
+        display.setInvisible(false);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.showEntity(this, display);
+        }
     }
 
     public void removeStormPiercerDisplay(UUID tridentId) {
@@ -226,16 +284,13 @@ public class LegendaryPlugin extends JavaPlugin {
 
         ItemDisplay display = tracked.display;
         if (!display.isValid()) {
-            trident.setInvisible(false);
             removeStormPiercerDisplay(tridentId);
             return;
         }
+        showStormPiercerDisplay(display);
 
         if (!trident.isInBlock()) {
-            Vector velocity = trident.getVelocity();
-            Vector direction = velocity.lengthSquared() > 0.001
-                    ? velocity.clone().normalize()
-                    : trident.getLocation().getDirection().normalize();
+            Vector direction = trident.getLocation().getDirection().normalize();
             Vector3f dir = new Vector3f(
                     (float) direction.getX(),
                     (float) direction.getY(),
@@ -309,29 +364,32 @@ public class LegendaryPlugin extends JavaPlugin {
     private void updateBeaconsAndProximity() {
         // Apply Glowing + Sky Beacon to holders and dropped items
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (findLegendaryInInventory(player) != null) {
+            String id = findLegendaryInInventory(player);
+            if (id != null) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 40, 0, false, false));
-                spawnBeaconBeam(player.getLocation());
+                spawnBeaconBeam(player.getLocation(), id);
             }
         }
 
         for (World world : Bukkit.getWorlds()) {
             for (Item dropped : world.getEntitiesByClass(Item.class)) {
-                if (getLegendaryId(dropped.getItemStack()) != null) {
+                String id = getLegendaryId(dropped.getItemStack());
+                if (id != null) {
                     if (!dropped.isGlowing()) {
                         dropped.setGlowing(true);
                         dropped.setUnlimitedLifetime(true);
                     }
-                    spawnBeaconBeam(dropped.getLocation());
+                    spawnBeaconBeam(dropped.getLocation(), id);
                 }
             }
             for (Trident trident : world.getEntitiesByClass(Trident.class)) {
                 if (isStormPiercer(trident)) {
                     trident.setGlowing(true);
-                    spawnBeaconBeam(trident.getLocation());
+                    spawnBeaconBeam(trident.getLocation(), "storm_piercer");
                 }
             }
         }
+        updateLegendaryGlowTeams();
 
         // Update Proximity Boss Bar for nearby hunters
         List<TrackedTarget> targets = scanActiveTargets();
@@ -421,7 +479,7 @@ public class LegendaryPlugin extends JavaPlugin {
         return Math.round((float) coord / COORD_ROUND_STEP) * COORD_ROUND_STEP;
     }
 
-    private void spawnBeaconBeam(Location base) {
+    private void spawnBeaconBeam(Location base, String legendaryId) {
         World world = base.getWorld();
         if (world == null) return;
 
@@ -430,7 +488,8 @@ public class LegendaryPlugin extends JavaPlugin {
         int startY = base.getBlockY();
         int maxY = Math.min(world.getMaxHeight(), startY + 220);
 
-        Particle.DustOptions beamCore = new Particle.DustOptions(Color.fromRGB(255, 200, 40), 2.5f);
+        Color beamColor = getLegendaryColor(legendaryId);
+        Particle.DustOptions beamCore = new Particle.DustOptions(beamColor, 2.5f);
 
         for (int y = startY; y <= maxY; y += 2) {
             Location point = new Location(world, x, y, z);
@@ -453,6 +512,101 @@ public class LegendaryPlugin extends JavaPlugin {
         }
     }
 
+    public Color getLegendaryColor(String legendaryId) {
+        if ("storm_piercer".equals(legendaryId)) {
+            return Color.fromRGB(0x55FFFF);
+        }
+        if ("void_cleaver".equals(legendaryId)) {
+            return Color.fromRGB(0x176B35);
+        }
+        return Color.fromRGB(255, 200, 40);
+    }
+
+    private NamedTextColor getGlowTeamColor(String legendaryId) {
+        if ("storm_piercer".equals(legendaryId)) {
+            return NamedTextColor.AQUA;
+        }
+        if ("void_cleaver".equals(legendaryId)) {
+            return NamedTextColor.DARK_GREEN;
+        }
+        return NamedTextColor.GOLD;
+    }
+
+    private String getGlowTeamName(NamedTextColor color) {
+        if (color.equals(NamedTextColor.AQUA)) {
+            return "legendary_cyan";
+        }
+        if (color.equals(NamedTextColor.DARK_GREEN)) {
+            return "legendary_green";
+        }
+        return "legendary_gold";
+    }
+
+    private ChatColor getScoreboardColor(NamedTextColor color) {
+        if (color.equals(NamedTextColor.AQUA)) {
+            return ChatColor.AQUA;
+        }
+        if (color.equals(NamedTextColor.DARK_GREEN)) {
+            return ChatColor.DARK_GREEN;
+        }
+        return ChatColor.GOLD;
+    }
+
+    private void updateLegendaryGlowTeams() {
+        Map<NamedTextColor, Set<String>> entriesByColor = new LinkedHashMap<>();
+        entriesByColor.put(NamedTextColor.GOLD, new HashSet<>());
+        entriesByColor.put(NamedTextColor.AQUA, new HashSet<>());
+        entriesByColor.put(NamedTextColor.DARK_GREEN, new HashSet<>());
+
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            String id = findLegendaryInInventory(player);
+            if (id != null) {
+                entriesByColor.get(getGlowTeamColor(id)).add(player.getName());
+            }
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (Item dropped : world.getEntitiesByClass(Item.class)) {
+                String id = getLegendaryId(dropped.getItemStack());
+                if (id != null) {
+                    entriesByColor.get(getGlowTeamColor(id)).add(dropped.getScoreboardEntryName());
+                }
+            }
+            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
+                if (isStormPiercer(trident)) {
+                    entriesByColor.get(NamedTextColor.AQUA).add(trident.getScoreboardEntryName());
+                }
+            }
+        }
+        for (TrackedStormPiercer tracked : stormPiercerDisplays.values()) {
+            if (tracked.display.isValid()) {
+                entriesByColor.get(NamedTextColor.AQUA).add(tracked.display.getScoreboardEntryName());
+            }
+        }
+
+        for (Player viewer : Bukkit.getOnlinePlayers()) {
+            Scoreboard scoreboard = viewer.getScoreboard();
+            Map<NamedTextColor, Team> teams = new LinkedHashMap<>();
+            for (NamedTextColor color : entriesByColor.keySet()) {
+                String teamName = getGlowTeamName(color);
+                Team team = scoreboard.getTeam(teamName);
+                if (team == null) {
+                    team = scoreboard.registerNewTeam(teamName);
+                }
+                team.setColor(getScoreboardColor(color));
+                for (String oldEntry : trackedGlowEntries) {
+                    if (team.hasEntry(oldEntry)) {
+                        team.removeEntry(oldEntry);
+                    }
+                }
+                teams.put(color, team);
+            }
+            entriesByColor.forEach((color, entries) -> entries.forEach(teams.get(color)::addEntry));
+        }
+
+        trackedGlowEntries.clear();
+        entriesByColor.values().forEach(trackedGlowEntries::addAll);
+    }
+
     public void removeBossBar(Player player) {
         BossBar bar = activeBossBars.remove(player.getUniqueId());
         if (bar != null) {
@@ -470,6 +624,9 @@ public class LegendaryPlugin extends JavaPlugin {
 
     private void applyLegendaryOverloadPenalty() {
         for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+                continue;
+            }
             int legendaryCount = 0;
             for (ItemStack stack : player.getInventory().getStorageContents()) {
                 legendaryCount += getLegendaryItemCount(stack);
@@ -486,6 +643,103 @@ public class LegendaryPlugin extends JavaPlugin {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, true, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 40, 0, true, true));
                 player.damage(2.0);
+            }
+        }
+    }
+
+    public int destroyAllLegendaries() {
+            Set<String> destroyedIds = new HashSet<>();
+            for (LegendaryItem item : registry.getAll()) {
+                if (isCrafted(item.id())) {
+                    destroyedIds.add(item.id());
+                }
+            }
+
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                clearLegendaryItems(player.getInventory(), destroyedIds);
+                clearLegendaryItems(player.getEnderChest(), destroyedIds);
+                String cursorId = getLegendaryId(player.getOpenInventory().getCursor());
+                if (cursorId != null) {
+                    destroyedIds.add(cursorId);
+                    player.getOpenInventory().setCursor(null);
+                }
+            }
+
+            for (World world : Bukkit.getWorlds()) {
+                for (Entity entity : world.getEntities()) {
+                    if (entity instanceof Item dropped) {
+                        String id = getLegendaryId(dropped.getItemStack());
+                        if (id != null) {
+                            destroyedIds.add(id);
+                            dropped.remove();
+                        }
+                    } else if (entity instanceof Trident trident) {
+                        String id = getLegendaryId(trident.getItemStack());
+                        if (id != null) {
+                            destroyedIds.add(id);
+                            removeStormPiercerDisplay(trident.getUniqueId());
+                            trident.remove();
+                        }
+                    } else if (entity instanceof ItemFrame itemFrame) {
+                        String id = getLegendaryId(itemFrame.getItem());
+                        if (id != null) {
+                            destroyedIds.add(id);
+                            itemFrame.setItem(new ItemStack(org.bukkit.Material.AIR));
+                        }
+                    }
+
+                    if (entity instanceof LivingEntity living && living.getEquipment() != null) {
+                        clearLegendaryEquipment(living, destroyedIds);
+                    }
+                    if (entity instanceof InventoryHolder holder && !(entity instanceof Player)) {
+                        clearLegendaryItems(holder.getInventory(), destroyedIds);
+                    }
+                }
+
+                for (Chunk chunk : world.getLoadedChunks()) {
+                    for (BlockState state : chunk.getTileEntities()) {
+                        if (state instanceof Container container) {
+                            clearLegendaryItems(container.getInventory(), destroyedIds);
+                        }
+                    }
+                }
+            }
+
+            for (String id : destroyedIds) {
+                destroyLegendary(id, "destroyed by an administrator");
+            }
+            return destroyedIds.size();
+        }
+
+    private void clearLegendaryEquipment(LivingEntity entity, Set<String> destroyedIds) {
+        org.bukkit.inventory.EntityEquipment equipment = entity.getEquipment();
+        clearEquipmentSlot(equipment.getHelmet(), equipment::setHelmet, destroyedIds);
+        clearEquipmentSlot(equipment.getChestplate(), equipment::setChestplate, destroyedIds);
+        clearEquipmentSlot(equipment.getLeggings(), equipment::setLeggings, destroyedIds);
+        clearEquipmentSlot(equipment.getBoots(), equipment::setBoots, destroyedIds);
+        clearEquipmentSlot(equipment.getItemInMainHand(), equipment::setItemInMainHand, destroyedIds);
+        clearEquipmentSlot(equipment.getItemInOffHand(), equipment::setItemInOffHand, destroyedIds);
+    }
+
+    private void clearEquipmentSlot(
+            ItemStack stack,
+            java.util.function.Consumer<ItemStack> setter,
+            Set<String> destroyedIds
+    ) {
+        String id = getLegendaryId(stack);
+        if (id != null) {
+            destroyedIds.add(id);
+            setter.accept(null);
+        }
+    }
+
+    private void clearLegendaryItems(Inventory inventory, Set<String> destroyedIds) {
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            String id = getLegendaryId(stack);
+            if (id != null) {
+                destroyedIds.add(id);
+                inventory.setItem(slot, null);
             }
         }
     }
@@ -510,18 +764,16 @@ public class LegendaryPlugin extends JavaPlugin {
 
         switch (id) {
             case "astral_sovereign" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 1, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 1, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
             }
             case "void_cleaver" -> {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 45, 0, true, false, true));
             }
             case "storm_piercer" -> {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 45, 0, true, false, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
             }
             default -> {
             }
@@ -553,10 +805,18 @@ public class LegendaryPlugin extends JavaPlugin {
                 && "astral_chestplate".equals(chestplateId)
                 && "astral_leggings".equals(leggingsId)
                 && "astral_boots".equals(bootsId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 45, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 30, 0, true, false, true));
             player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 45, 0, true, false, true));
             if (player.isSprinting()) {
-                player.getWorld().spawnParticle(Particle.END_ROD, player.getLocation().add(0.0, 0.1, 0.0), 2, 0.15, 0.05, 0.15, 0.0);
+                player.getWorld().spawnParticle(
+                        Particle.DUST,
+                        player.getLocation().add(0.0, 0.1, 0.0),
+                        2,
+                        0.15,
+                        0.05,
+                        0.15,
+                        new Particle.DustOptions(getLegendaryColor("astral_helmet"), 1.0f)
+                );
             }
         }
     }
@@ -600,6 +860,129 @@ public class LegendaryPlugin extends JavaPlugin {
     public void markCrafted(String id, boolean crafted) {
         getConfig().set("crafted." + id, crafted);
         saveConfig();
+    }
+
+    public boolean claimLegendary(String id, Player owner) {
+        if (isCrafted(id)) {
+            return false;
+        }
+        getConfig().set("crafted." + id, true);
+        getConfig().set("owners." + id, owner.getUniqueId().toString());
+        saveConfig();
+        return true;
+    }
+
+    public void transferLegendaryOwnership(String id, Player newOwner) {
+        String oldOwner = getConfig().getString("owners." + id);
+        String newOwnerId = newOwner.getUniqueId().toString();
+        getConfig().set("owners." + id, newOwnerId);
+        saveConfig();
+        if (oldOwner == null || oldOwner.equals(newOwnerId) || isAnnouncementCoolingDown(id)) {
+            return;
+        }
+
+        LegendaryItem item = registry.getById(id);
+        String itemName = item == null ? id : item.displayName();
+        Bukkit.broadcast(Component.text("⚡ " + newOwner.getName() + " now wields " + itemName + "!", NamedTextColor.AQUA));
+        playOwnershipAnnouncementSound();
+        ownershipAnnouncementCooldowns.put(id, System.currentTimeMillis());
+    }
+
+    public void announceLegendaryDeath(Player player, Collection<String> itemIds) {
+        for (String id : itemIds) {
+            if (isAnnouncementCoolingDown(id)) {
+                continue;
+            }
+            LegendaryItem item = registry.getById(id);
+            String itemName = item == null ? id : item.displayName();
+            Bukkit.broadcast(Component.text("⚡ " + player.getName() + " fell while carrying " + itemName + ".", NamedTextColor.YELLOW));
+            playOwnershipAnnouncementSound();
+            ownershipAnnouncementCooldowns.put(id, System.currentTimeMillis());
+        }
+    }
+
+    public void destroyLegendary(String id, String cause) {
+        if (!isCrafted(id) || hasLegendaryItem(id)) {
+            return;
+        }
+        getConfig().set("crafted." + id, false);
+        getConfig().set("owners." + id, null);
+        saveConfig();
+
+        LegendaryItem item = registry.getById(id);
+        String itemName = item == null ? id : item.displayName();
+        Component title = Component.text("LEGENDARY ITEM DESTROYED", NamedTextColor.RED, TextDecoration.BOLD);
+        Component subtitle = Component.text(itemName + " was " + cause + ". It can be forged again.", NamedTextColor.GOLD);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.showTitle(net.kyori.adventure.title.Title.title(title, subtitle));
+        }
+        Bukkit.broadcast(Component.text("☄ " + itemName + " has been destroyed (" + cause + ") and may now be forged again!", NamedTextColor.RED, TextDecoration.BOLD));
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_WITHER_DEATH, 1.0f, 0.8f);
+        }
+    }
+
+    public boolean hasLegendaryItem(String id) {
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            for (ItemStack stack : onlinePlayer.getInventory().getContents()) {
+                if (id.equals(getLegendaryId(stack))) {
+                    return true;
+                }
+            }
+            if (id.equals(getLegendaryId(onlinePlayer.getOpenInventory().getCursor()))) {
+                return true;
+            }
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof Item dropped && dropped.isValid()
+                        && id.equals(getLegendaryId(dropped.getItemStack()))) {
+                    return true;
+                }
+                if (entity instanceof Trident trident && trident.isValid()
+                        && id.equals(getLegendaryId(trident.getItemStack()))) {
+                    return true;
+                }
+                if (entity instanceof ItemFrame itemFrame
+                        && id.equals(getLegendaryId(itemFrame.getItem()))) {
+                    return true;
+                }
+                if (entity instanceof LivingEntity living && living.getEquipment() != null) {
+                    for (ItemStack stack : living.getEquipment().getArmorContents()) {
+                        if (id.equals(getLegendaryId(stack))) {
+                            return true;
+                        }
+                    }
+                    if (id.equals(getLegendaryId(living.getEquipment().getItemInMainHand()))
+                            || id.equals(getLegendaryId(living.getEquipment().getItemInOffHand()))) {
+                        return true;
+                    }
+                }
+            }
+            for (Chunk chunk : world.getLoadedChunks()) {
+                for (BlockState state : chunk.getTileEntities()) {
+                    if (state instanceof Container container) {
+                        for (ItemStack stack : container.getInventory().getContents()) {
+                            if (id.equals(getLegendaryId(stack))) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isAnnouncementCoolingDown(String id) {
+        Long lastAnnounced = ownershipAnnouncementCooldowns.get(id);
+        return lastAnnounced != null && System.currentTimeMillis() - lastAnnounced < 30_000L;
+    }
+
+    private void playOwnershipAnnouncementSound() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.playSound(player.getLocation(), org.bukkit.Sound.BLOCK_BEACON_POWER_SELECT, 0.8f, 1.2f);
+        }
     }
 
     public NamespacedKey getItemKey() {

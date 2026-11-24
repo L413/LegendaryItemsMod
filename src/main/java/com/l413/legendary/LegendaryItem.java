@@ -8,6 +8,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
@@ -68,6 +69,9 @@ public record LegendaryItem(
             NamespacedKey healthKey = new NamespacedKey(plugin, id + "_max_health");
             meta.addAttributeModifier(Attribute.MAX_HEALTH,
                     new AttributeModifier(healthKey, maxHealthBonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.CHEST));
+        }
+        if ("titan_pickaxe".equals(id)) {
+            meta.addEnchant(Enchantment.EFFICIENCY, 5, true);
         }
 
         item.setItemMeta(meta);

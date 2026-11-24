@@ -29,13 +29,13 @@ public class LegendaryRegistry {
                 "Astral Sovereign",
                 Material.NETHERITE_SWORD,
                 "legendary:astral_sovereign",
-                14.0,
-                1.8,
+                10.0,
+                1.6,
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Held: Speed II, Jump Boost II, Night Vision.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("On hit: Regeneration for 3 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("25% chance to deal 4 bonus damage with an astral burst.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Held: Speed I, Jump Boost I, Night Vision.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("On hit: Regeneration for 2 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("15% chance to deal 2 bonus damage with an astral burst.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Projects a sky beacon and reveals your location.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
@@ -57,13 +57,13 @@ public class LegendaryRegistry {
                 "Void Cleaver",
                 Material.NETHERITE_AXE,
                 "legendary:void_cleaver",
-                16.0,
-                1.1,
+                12.0,
+                1.0,
                 List.of(
                         Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Held: Resistance I and Fire Resistance.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("On hit: Wither II (3s), Slowness (2s), and a void pull.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Heals you for 3 HP and releases Dragon's Breath.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Held: Resistance I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("On hit: Wither I (2s), Slowness (1.5s), and a void pull.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Heals you for 1.5 HP and releases Dragon's Breath.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -83,13 +83,13 @@ public class LegendaryRegistry {
                 "Storm Piercer",
                 Material.TRIDENT,
                 "legendary:storm_piercer",
-                12.0,
-                1.6,
+                9.0,
+                1.4,
                 List.of(
                         Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Held: Water Breathing, Dolphin's Grace, Speed I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Melee or thrown hit: lightning effect and 4 bonus damage.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Gain Slow Falling for 4s when airborne on hit.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Held: Water Breathing and Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Melee or thrown hit: lightning effect and 2 bonus damage.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Gain Slow Falling for 3s when airborne on hit.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -130,13 +130,59 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("While worn: Resistance I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("+4 maximum health.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("+2 maximum health.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.CHEST,
-                4.0
+                2.0
         ));
 
+        register(new LegendaryItem(
+                "astral_excavator",
+                "Astral Excavator",
+                Material.NETHERITE_PICKAXE,
+                "legendary:astral_excavator",
+                7.0,
+                1.2,
+                List.of(
+                        Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Instantly breaks blocks that can be mined.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                ),
+                recipe -> {
+                    recipe.shape(
+                            "GNG",
+                            "EPE",
+                            "G G"
+                    );
+                    recipe.setIngredient('G', Material.GOLD_BLOCK);
+                    recipe.setIngredient('N', Material.NETHER_STAR);
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('P', Material.NETHERITE_PICKAXE);
+                }
+        ));
+
+        register(new LegendaryItem(
+                "titan_pickaxe",
+                "Titan Pickaxe",
+                Material.NETHERITE_PICKAXE,
+                "legendary:titan_pickaxe",
+                7.0,
+                1.2,
+                List.of(
+                        Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                ),
+                recipe -> {
+                    recipe.shape(
+                            "DID",
+                            " P ",
+                            "I I"
+                    );
+                    recipe.setIngredient('D', Material.DIAMOND_BLOCK);
+                    recipe.setIngredient('I', Material.IRON_BLOCK);
+                    recipe.setIngredient('P', Material.NETHERITE_PICKAXE);
+                }
+        ));
         register(new LegendaryItem(
                 "astral_leggings",
                 "Astral Greaves",
@@ -162,7 +208,8 @@ public class LegendaryRegistry {
                 0.0,
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("While worn: Dolphin's Grace; prevents fall damage.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("While worn: Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak while falling to gain Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.FEET,
