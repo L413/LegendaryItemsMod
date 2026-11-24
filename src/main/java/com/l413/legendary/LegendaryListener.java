@@ -6,6 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.block.Block;
@@ -59,14 +60,12 @@ public class LegendaryListener implements Listener {
     private static final long MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS = 90_000L;
     private static final long ASTRAL_WARD_COOLDOWN_MILLIS = 30_000L;
     private static final long SHURIKEN_SPECIAL_COOLDOWN_MILLIS = 8_000L;
-    private static final int SHURIKEN_ITEM_COOLDOWN_TICKS = 20;
+    private static final long SHURIKEN_ITEM_COOLDOWN_MILLIS = 1_000L;
     private static final int SHURIKEN_BURST_SIZE = 3;
     private static final int SHURIKEN_SPECIAL_SIZE = 12;
     private static final double SHURIKEN_DAMAGE = 10.0;
     private final LegendaryPlugin plugin;
     private final Map<UUID, BlockFace> excavatorMiningFaces = new HashMap<>();
-    private final Map<UUID, Long> mjolnirLightningCooldowns = new HashMap<>();
-    private final Map<String, Map<UUID, Long>> abilityCooldowns = new HashMap<>();
     private final Set<UUID> areaBreaking = new HashSet<>();
     private final Set<UUID> astralBootSlowFalling = new HashSet<>();
 
@@ -77,7 +76,6 @@ public class LegendaryListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         plugin.removeBossBar(event.getPlayer());
-        abilityCooldowns.values().forEach(cooldowns -> cooldowns.remove(event.getPlayer().getUniqueId()));
         astralBootSlowFalling.remove(event.getPlayer().getUniqueId());
     }
 
@@ -133,7 +131,7 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateMjolnirSkyLightning(Player player) {
-        if (!tryUseAbility(player, "mjolnir_sky", MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS)) {
+        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "mjolnir_sky", MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS)) {
             return;
         }
 
@@ -219,7 +217,7 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateAstralWard(Player player) {
-        if (!tryUseAbility(player, "astral_ward", ASTRAL_WARD_COOLDOWN_MILLIS)) {
+        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "astral_ward", ASTRAL_WARD_COOLDOWN_MILLIS)) {
             return;
         }
 
@@ -245,12 +243,13 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateShurikenBurst(Player player) {
-        boolean cooldownsEnabled = player.getGameMode() != org.bukkit.GameMode.CREATIVE;
-        if (cooldownsEnabled && player.hasCooldown(Material.SNOWBALL)) {
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "shuriken_burst",
+                SHURIKEN_ITEM_COOLDOWN_MILLIS
+        )) {
             return;
-        }
-        if (cooldownsEnabled) {
-            player.setCooldown(Material.SNOWBALL, SHURIKEN_ITEM_COOLDOWN_TICKS);
         }
 
         new BukkitRunnable() {
@@ -283,7 +282,7 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateShurikenSpecial(Player player) {
-        if (!tryUseAbility(player, "shuriken_special", SHURIKEN_SPECIAL_COOLDOWN_MILLIS)) {
+        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "shuriken_special", SHURIKEN_SPECIAL_COOLDOWN_MILLIS)) {
             return;
         }
 
@@ -360,15 +359,20 @@ public class LegendaryListener implements Listener {
         });
     }
 
-    private boolean tryUseAbility(Player player, String abilityId, long cooldownMillis) {
+    private boolean tryUseAbility(Player player, ItemStack item, String abilityId, long cooldownMillis) {
         if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
             return true;
         }
 
-        UUID playerId = player.getUniqueId();
-        Map<UUID, Long> cooldowns = abilityCooldowns.computeIfAbsent(abilityId, key -> new HashMap<>());
+        if (item == null || item.getType().isAir()) {
+            return false;
+        }
+
+        NamespacedKey cooldownKey = new NamespacedKey(plugin, "cooldown_" + abilityId);
+        var meta = item.getItemMeta();
+        var cooldownData = meta.getPersistentDataContainer();
         long now = System.currentTimeMillis();
-        long nextUse = cooldowns.getOrDefault(playerId, 0L);
+        long nextUse = cooldownData.getOrDefault(cooldownKey, PersistentDataType.LONG, 0L);
         if (now < nextUse) {
             long secondsRemaining = (nextUse - now + 999L) / 1000L;
             player.sendActionBar(Component.text(
@@ -378,7 +382,8 @@ public class LegendaryListener implements Listener {
             return false;
         }
 
-        cooldowns.put(playerId, now + cooldownMillis);
+        cooldownData.set(cooldownKey, PersistentDataType.LONG, now + cooldownMillis);
+        item.setItemMeta(meta);
         return true;
     }
 
@@ -555,7 +560,7 @@ public class LegendaryListener implements Listener {
 
         switch (weaponId) {
             case "astral_sovereign" -> applyAstralHit(attacker, target);
-            case "mjolnir" -> applyMjolnirHit(attacker, target);
+            case "mjolnir" -> applyMjolnirHit(attacker, target, getHeldLegendaryItem(attacker, weaponId));
             default -> {
             }
         }
@@ -611,23 +616,24 @@ public class LegendaryListener implements Listener {
         }
     }
 
-    private void applyMjolnirHit(Player attacker, LivingEntity target) {
+    private ItemStack getHeldLegendaryItem(Player player, String itemId) {
+        ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (itemId.equals(plugin.getLegendaryId(mainHand))) {
+            return mainHand;
+        }
+        ItemStack offHand = player.getInventory().getItemInOffHand();
+        return itemId.equals(plugin.getLegendaryId(offHand)) ? offHand : null;
+    }
+
+    private void applyMjolnirHit(Player attacker, LivingEntity target, ItemStack mjolnir) {
         if (attacker.getGameMode() == org.bukkit.GameMode.CREATIVE) {
             strikeMjolnirTarget(target);
             return;
         }
 
-        long now = System.currentTimeMillis();
-        long nextAvailable = mjolnirLightningCooldowns.getOrDefault(attacker.getUniqueId(), 0L);
-        if (now < nextAvailable) {
-            return;
+        if (tryUseAbility(attacker, mjolnir, "mjolnir_lightning", MJOLNIR_LIGHTNING_COOLDOWN_MILLIS)) {
+            strikeMjolnirTarget(target);
         }
-
-        mjolnirLightningCooldowns.put(
-                attacker.getUniqueId(),
-                now + MJOLNIR_LIGHTNING_COOLDOWN_MILLIS
-        );
-        strikeMjolnirTarget(target);
     }
 
     private void strikeMjolnirTarget(LivingEntity target) {

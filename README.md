@@ -178,6 +178,10 @@ starting health is 20 half-heart units (10 full hearts); the default maximum is
 
 ## Item abilities
 
+Ability cooldowns are stored on the individual item, not the player, so they
+continue counting down through transfers and logout/login. Creative mode still
+bypasses ability cooldowns.
+
 | Item | Abilities |
 |---|---|
 | **Astral Sovereign** | While held: Speed I, Jump Boost I, and Night Vision. On hit: Regeneration; 15% chance of an astral burst for 2 bonus damage. Sneak + right-click: Absorption for 6 seconds and Regeneration I for 5 seconds (30-second cooldown). Projects a sky beacon that reveals the holder's location. |
