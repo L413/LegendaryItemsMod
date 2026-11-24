@@ -4,6 +4,7 @@ crafted:
 legendary:
   logout-behavior: beacon
   tracker-coordinate-rounding: 250
+  overload-rule: armor_tool
   offline-beacons: {}
 
 lifesteal:

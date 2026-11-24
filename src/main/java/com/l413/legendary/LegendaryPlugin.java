@@ -371,8 +371,14 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
         // 1. Check online players carrying a legendary item
         for (Player player : Bukkit.getOnlinePlayers()) {
-            String id = findLegendaryInInventory(player);
-            if (id != null) {
+            Set<String> carriedIds = new HashSet<>();
+            for (ItemStack stack : player.getInventory().getContents()) {
+                String id = getLegendaryId(stack);
+                if (id != null) {
+                    carriedIds.add(id);
+                }
+            }
+            for (String id : carriedIds) {
                 LegendaryItem def = registry.getById(id);
                 String name = def != null ? def.displayName() : id;
                 targets.add(new TrackedTarget(id, name, player.getLocation(), player.getUniqueId(), player.getName()));
@@ -397,10 +403,12 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     private void updateBeaconsAndProximity() {
         // Apply Glowing + Sky Beacon to holders and dropped items
         for (Player player : Bukkit.getOnlinePlayers()) {
-            String id = findLegendaryInInventory(player);
-            if (id != null) {
+            Set<String> carriedIds = getLegendaryIdsInInventory(player);
+            if (!carriedIds.isEmpty()) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 40, 0, false, false));
-                spawnBeaconBeam(player.getLocation(), id);
+                for (String id : carriedIds) {
+                    spawnBeaconBeam(player.getLocation(), id);
+                }
             }
         }
 
@@ -665,8 +673,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         entriesByColor.put(NamedTextColor.GREEN, new HashSet<>());
 
         for (Player player : Bukkit.getOnlinePlayers()) {
-            String id = findLegendaryInInventory(player);
-            if (id != null) {
+            for (String id : getLegendaryIdsInInventory(player)) {
                 entriesByColor.get(getGlowTeamColor(id)).add(player.getName());
             }
         }
@@ -710,12 +717,15 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
     }
 
-    private String findLegendaryInInventory(Player player) {
+    private Set<String> getLegendaryIdsInInventory(Player player) {
+        Set<String> ids = new java.util.LinkedHashSet<>();
         for (ItemStack stack : player.getInventory().getContents()) {
             String id = getLegendaryId(stack);
-            if (id != null) return id;
+            if (id != null) {
+                ids.add(id);
+            }
         }
-        return null;
+        return ids;
     }
 
     private void applyLegendaryOverloadPenalty() {
@@ -734,13 +744,41 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 legendaryCount += getLegendaryItemCount(stack);
             }
 
-            if (legendaryCount > 1) {
+            int allowedCount = 1;
+            if ("armor_tool".equalsIgnoreCase(getConfig().getString("legendary.overload-rule", "armor_tool"))) {
+                allowedCount = (hasEquippedLegendaryArmor(player) ? 1 : 0)
+                        + (hasHeldLegendaryTool(player) ? 1 : 0);
+            }
+
+            if (legendaryCount > allowedCount) {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 10, true, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, true, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 40, 0, true, true));
                 player.damage(2.0);
             }
         }
+    }
+
+    private boolean hasEquippedLegendaryArmor(Player player) {
+        for (ItemStack stack : player.getInventory().getArmorContents()) {
+            String id = getLegendaryId(stack);
+            LegendaryItem item = id == null ? null : registry.getById(id);
+            if (item != null && item.equipmentSlot() != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasHeldLegendaryTool(Player player) {
+        return isLegendaryTool(player.getInventory().getItemInMainHand())
+                || isLegendaryTool(player.getInventory().getItemInOffHand());
+    }
+
+    private boolean isLegendaryTool(ItemStack stack) {
+        String id = getLegendaryId(stack);
+        LegendaryItem item = id == null ? null : registry.getById(id);
+        return item != null && item.equipmentSlot() == null;
     }
 
     public int destroyAllLegendaries() {
@@ -890,6 +928,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
         if ("astral_boots".equals(bootsId)) {
             player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
         }
 
         if ("astral_helmet".equals(helmetId)

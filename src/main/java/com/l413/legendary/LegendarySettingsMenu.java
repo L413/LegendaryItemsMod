@@ -28,6 +28,7 @@ public final class LegendarySettingsMenu implements Listener {
         this.plugin = plugin;
         plugin.getConfig().addDefault(CONFIG_ROOT + "logout-behavior", "beacon");
         plugin.getConfig().addDefault(CONFIG_ROOT + "tracker-coordinate-rounding", 250);
+        plugin.getConfig().addDefault(CONFIG_ROOT + "overload-rule", "armor_tool");
         plugin.saveConfig();
     }
 
@@ -58,6 +59,7 @@ public final class LegendarySettingsMenu implements Listener {
             case 11 -> cycleLogoutBehavior();
             case 14 -> setCoordinateRounding(getCoordinateRounding() - 50);
             case 16 -> setCoordinateRounding(getCoordinateRounding() + 50);
+            case 20 -> cycleOverloadRule();
             default -> {
                 return;
             }
@@ -88,6 +90,14 @@ public final class LegendarySettingsMenu implements Listener {
         menu.setItem(14, menuItem(Material.RED_DYE, "Decrease coordinate rounding", "Reduce by 50 blocks"));
         menu.setItem(15, menuItem(Material.MAP, "Tracker rounding: " + getCoordinateRounding() + " blocks", "Approximate coordinates"));
         menu.setItem(16, menuItem(Material.LIME_DYE, "Increase coordinate rounding", "Increase by 50 blocks"));
+        menu.setItem(20, menuItem(
+                Material.IRON_CHESTPLATE,
+                "Carry rule: " + (getOverloadRule().equals("armor_tool") ? "one armor + one tool" : "one overall"),
+                getOverloadRule().equals("armor_tool")
+                        ? "Allows one equipped legendary armor and one held legendary tool."
+                        : "Allows one legendary item total.",
+                "Click to switch rule"
+        ));
     }
 
     private ItemStack menuItem(Material material, String name, String... details) {
@@ -119,6 +129,20 @@ public final class LegendarySettingsMenu implements Listener {
 
     private void setCoordinateRounding(int value) {
         plugin.getConfig().set(CONFIG_ROOT + "tracker-coordinate-rounding", Math.max(50, Math.min(1000, value)));
+        plugin.saveConfig();
+    }
+
+    private String getOverloadRule() {
+        return "one".equalsIgnoreCase(plugin.getConfig().getString(CONFIG_ROOT + "overload-rule", "armor_tool"))
+                ? "one"
+                : "armor_tool";
+    }
+
+    private void cycleOverloadRule() {
+        plugin.getConfig().set(
+                CONFIG_ROOT + "overload-rule",
+                getOverloadRule().equals("armor_tool") ? "one" : "armor_tool"
+        );
         plugin.saveConfig();
     }
 }
