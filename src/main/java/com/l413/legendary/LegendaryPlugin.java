@@ -7,14 +7,20 @@ import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.World;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Trident;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,6 +30,9 @@ import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Transformation;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -39,18 +48,31 @@ public class LegendaryPlugin extends JavaPlugin {
     private static final double PROXIMITY_RADIUS = 250.0;
 
     private NamespacedKey itemKey;
+    private NamespacedKey thrownTridentKey;
     private LegendaryRegistry registry;
     private final Map<UUID, BossBar> activeBossBars = new HashMap<>();
+    private final Map<UUID, TrackedStormPiercer> stormPiercerDisplays = new HashMap<>();
 
     private record TrackedTarget(String id, String displayName, Location location, UUID holderUuid, String statusLabel) {}
+
+    private static final class TrackedStormPiercer {
+        private final ItemDisplay display;
+        private BukkitTask task;
+
+        private TrackedStormPiercer(ItemDisplay display) {
+            this.display = display;
+        }
+    }
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         this.itemKey = new NamespacedKey(this, "legendary_id");
+        this.thrownTridentKey = new NamespacedKey(this, "thrown_trident");
         this.registry = new LegendaryRegistry(this);
 
         Bukkit.getPluginManager().registerEvents(new LegendaryListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new LegendaryStorageListener(this), this);
 
         this.registerCommand("givelegendary", new BasicCommand() {
             @Override
@@ -98,6 +120,8 @@ public class LegendaryPlugin extends JavaPlugin {
 
         // Fast visual loop (every 10 ticks / 0.5s): sky beacons, glowing, and proximity boss bar
         Bukkit.getScheduler().runTaskTimer(this, this::updateBeaconsAndProximity, 20L, 10L);
+        Bukkit.getScheduler().runTaskTimer(this, this::applyLegendaryOverloadPenalty, 20L, 20L);
+        Bukkit.getScheduler().runTaskTimer(this, this::applyHeldAndArmorEffects, 20L, 20L);
 
         // Scoreboard refresh loop (every 40 ticks / 2s): updates rounded coordinates sidebar
         Bukkit.getScheduler().runTaskTimer(this, this::updateScoreboards, 20L, 40L);
@@ -109,8 +133,142 @@ public class LegendaryPlugin extends JavaPlugin {
     public void onDisable() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             removeBossBar(player);
+            for (World world : Bukkit.getWorlds()) {
+                for (Trident trident : world.getEntitiesByClass(Trident.class)) {
+                    if (isStormPiercer(trident)) {
+                        player.showEntity(this, trident);
+                    }
+                }
+            }
         }
         activeBossBars.clear();
+        for (Map.Entry<UUID, TrackedStormPiercer> entry : stormPiercerDisplays.entrySet()) {
+            Entity entity = Bukkit.getEntity(entry.getKey());
+            if (entity instanceof Trident trident && trident.isValid()) {
+                trident.setInvisible(false);
+            }
+            TrackedStormPiercer tracked = entry.getValue();
+            if (tracked.task != null) {
+                tracked.task.cancel();
+            }
+            if (tracked.display.isValid()) {
+                tracked.display.remove();
+            }
+        }
+        stormPiercerDisplays.clear();
+    }
+
+    public void onStormPiercerLaunched(Trident trident) {
+        if (!isStormPiercer(trident)) {
+            return;
+        }
+
+        ItemDisplay display = trident.getWorld().spawn(trident.getLocation(), ItemDisplay.class);
+        display.setItemStack(trident.getItemStack().clone());
+        display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+        display.setBillboard(Display.Billboard.FIXED);
+        display.setGlowing(true);
+        display.setGlowColorOverride(Color.AQUA);
+        display.setTeleportDuration(1);
+        display.setInterpolationDelay(0);
+        display.setInterpolationDuration(1);
+        display.getPersistentDataContainer().set(thrownTridentKey, PersistentDataType.STRING, trident.getUniqueId().toString());
+        hideStormPiercer(trident);
+        trident.setInvisible(true);
+        trident.setGlowing(true);
+        UUID tridentId = trident.getUniqueId();
+        TrackedStormPiercer tracked = new TrackedStormPiercer(display);
+        stormPiercerDisplays.put(tridentId, tracked);
+        updateStormPiercerDisplay(tridentId);
+        tracked.task = Bukkit.getScheduler().runTaskTimer(
+                this,
+                () -> updateStormPiercerDisplay(tridentId),
+                0L,
+                1L
+        );
+    }
+
+    public void hideStormPiercer(Trident trident) {
+        if (!isStormPiercer(trident)) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.hideEntity(this, trident);
+        }
+    }
+
+    public void hideStormPiercersFor(Player player) {
+        for (World world : Bukkit.getWorlds()) {
+            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
+                if (isStormPiercer(trident)) {
+                    player.hideEntity(this, trident);
+                }
+            }
+        }
+    }
+
+    public void removeStormPiercerDisplay(UUID tridentId) {
+        TrackedStormPiercer tracked = stormPiercerDisplays.remove(tridentId);
+        removeStormPiercerDisplay(tracked);
+    }
+
+    private void updateStormPiercerDisplay(UUID tridentId) {
+        TrackedStormPiercer tracked = stormPiercerDisplays.get(tridentId);
+        if (tracked == null) {
+            return;
+        }
+
+        Entity entity = Bukkit.getEntity(tridentId);
+        if (!(entity instanceof Trident trident) || !trident.isValid() || trident.isDead()) {
+            removeStormPiercerDisplay(tridentId);
+            return;
+        }
+
+        ItemDisplay display = tracked.display;
+        if (!display.isValid()) {
+            trident.setInvisible(false);
+            removeStormPiercerDisplay(tridentId);
+            return;
+        }
+
+        if (!trident.isInBlock()) {
+            Vector velocity = trident.getVelocity();
+            Vector direction = velocity.lengthSquared() > 0.001
+                    ? velocity.clone().normalize()
+                    : trident.getLocation().getDirection().normalize();
+            Vector3f dir = new Vector3f(
+                    (float) direction.getX(),
+                    (float) direction.getY(),
+                    (float) direction.getZ()
+            ).normalize();
+            Quaternionf rotation = new Quaternionf().rotationTo(new Vector3f(0, 1, 0), dir);
+            display.setTransformation(new Transformation(
+                    new Vector3f(0, 0, 0),
+                    rotation,
+                    new Vector3f(1, 1, 1),
+                    new Quaternionf()
+            ));
+            display.setInterpolationDelay(0);
+            display.setInterpolationDuration(1);
+        }
+
+        Location displayLocation = trident.getLocation();
+        displayLocation.setYaw(0.0f);
+        displayLocation.setPitch(0.0f);
+        display.setTeleportDuration(1);
+        display.teleport(displayLocation);
+    }
+
+    private void removeStormPiercerDisplay(TrackedStormPiercer tracked) {
+        if (tracked == null) {
+            return;
+        }
+        if (tracked.task != null) {
+            tracked.task.cancel();
+        }
+        if (tracked.display.isValid()) {
+            tracked.display.remove();
+        }
     }
 
     private List<TrackedTarget> scanActiveTargets() {
@@ -136,6 +294,13 @@ public class LegendaryPlugin extends JavaPlugin {
                     targets.add(new TrackedTarget(id, name, dropped.getLocation(), null, "DROPPED"));
                 }
             }
+            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
+                String id = getLegendaryId(trident.getItemStack());
+                LegendaryItem def = id == null ? null : registry.getById(id);
+                if (def != null && def.id().equals("storm_piercer")) {
+                    targets.add(new TrackedTarget(id, def.displayName(), trident.getLocation(), null, "THROWN"));
+                }
+            }
         }
 
         return targets;
@@ -158,6 +323,12 @@ public class LegendaryPlugin extends JavaPlugin {
                         dropped.setUnlimitedLifetime(true);
                     }
                     spawnBeaconBeam(dropped.getLocation());
+                }
+            }
+            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
+                if (isStormPiercer(trident)) {
+                    trident.setGlowing(true);
+                    spawnBeaconBeam(trident.getLocation());
                 }
             }
         }
@@ -295,6 +466,117 @@ public class LegendaryPlugin extends JavaPlugin {
             if (id != null) return id;
         }
         return null;
+    }
+
+    private void applyLegendaryOverloadPenalty() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            int legendaryCount = 0;
+            for (ItemStack stack : player.getInventory().getStorageContents()) {
+                legendaryCount += getLegendaryItemCount(stack);
+            }
+            for (ItemStack stack : player.getInventory().getArmorContents()) {
+                legendaryCount += getLegendaryItemCount(stack);
+            }
+            for (ItemStack stack : player.getInventory().getExtraContents()) {
+                legendaryCount += getLegendaryItemCount(stack);
+            }
+
+            if (legendaryCount > 1) {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 10, true, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 40, 0, true, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, 40, 0, true, true));
+                player.damage(2.0);
+            }
+        }
+    }
+
+    private int getLegendaryItemCount(ItemStack stack) {
+        return getLegendaryId(stack) == null ? 0 : stack.getAmount();
+    }
+
+    private void applyHeldAndArmorEffects() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            applyHeldWeaponEffects(player, player.getInventory().getItemInMainHand());
+            applyHeldWeaponEffects(player, player.getInventory().getItemInOffHand());
+            applyAstralArmorEffects(player);
+        }
+    }
+
+    private void applyHeldWeaponEffects(Player player, ItemStack stack) {
+        String id = getLegendaryId(stack);
+        if (id == null || registry.getById(id) == null) {
+            return;
+        }
+
+        switch (id) {
+            case "astral_sovereign" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 1, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 1, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
+            }
+            case "void_cleaver" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 45, 0, true, false, true));
+            }
+            case "storm_piercer" -> {
+                player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 45, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
+            }
+            default -> {
+            }
+        }
+    }
+
+    private void applyAstralArmorEffects(Player player) {
+        String helmetId = getLegendaryId(player.getInventory().getHelmet());
+        String chestplateId = getLegendaryId(player.getInventory().getChestplate());
+        String leggingsId = getLegendaryId(player.getInventory().getLeggings());
+        String bootsId = getLegendaryId(player.getInventory().getBoots());
+
+        if ("astral_helmet".equals(helmetId)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 45, 0, true, false, true));
+        }
+        if ("astral_chestplate".equals(chestplateId)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, true, false, true));
+        }
+        if ("astral_leggings".equals(leggingsId)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
+        }
+        if ("astral_boots".equals(bootsId)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
+        }
+
+        if ("astral_helmet".equals(helmetId)
+                && "astral_chestplate".equals(chestplateId)
+                && "astral_leggings".equals(leggingsId)
+                && "astral_boots".equals(bootsId)) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 45, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 45, 0, true, false, true));
+            if (player.isSprinting()) {
+                player.getWorld().spawnParticle(Particle.END_ROD, player.getLocation().add(0.0, 0.1, 0.0), 2, 0.15, 0.05, 0.15, 0.0);
+            }
+        }
+    }
+
+    public String getHeldLegendaryId(Player player) {
+        String mainHandId = getLegendaryId(player.getInventory().getItemInMainHand());
+        if (mainHandId != null) {
+            return mainHandId;
+        }
+        return getLegendaryId(player.getInventory().getItemInOffHand());
+    }
+
+    private boolean isStormPiercer(Trident trident) {
+        String id = getLegendaryId(trident.getItemStack());
+        LegendaryItem item = id == null ? null : registry.getById(id);
+        return item != null && item.id().equals("storm_piercer");
+    }
+
+    public boolean isStormPiercerTrident(Trident trident) {
+        return isStormPiercer(trident);
     }
 
     private String formatDimension(World.Environment env) {
