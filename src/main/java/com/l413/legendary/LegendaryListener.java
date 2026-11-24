@@ -9,6 +9,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Container;
@@ -16,6 +17,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.Trident;
 import org.bukkit.event.EventHandler;
@@ -28,6 +30,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
@@ -56,21 +59,24 @@ import java.util.Set;
 import java.util.UUID;
 
 public class LegendaryListener implements Listener {
-    private static final long MJOLNIR_LIGHTNING_COOLDOWN_MILLIS = 15_000L;
-    private static final long MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS = 90_000L;
-    private static final long ASTRAL_WARD_COOLDOWN_MILLIS = 30_000L;
-    private static final long SHURIKEN_SPECIAL_COOLDOWN_MILLIS = 8_000L;
-    private static final long SHURIKEN_ITEM_COOLDOWN_MILLIS = 1_000L;
-    private static final int SHURIKEN_BURST_SIZE = 3;
-    private static final int SHURIKEN_SPECIAL_SIZE = 12;
-    private static final double SHURIKEN_DAMAGE = 10.0;
     private final LegendaryPlugin plugin;
+    private final NamespacedKey combatTagKey;
+    private final NamespacedKey safeDropWorldKey;
+    private final NamespacedKey safeDropXKey;
+    private final NamespacedKey safeDropYKey;
+    private final NamespacedKey safeDropZKey;
     private final Map<UUID, BlockFace> excavatorMiningFaces = new HashMap<>();
     private final Set<UUID> areaBreaking = new HashSet<>();
     private final Set<UUID> astralBootSlowFalling = new HashSet<>();
 
     public LegendaryListener(LegendaryPlugin plugin) {
         this.plugin = plugin;
+        this.combatTagKey = new NamespacedKey(plugin, "last_player_combat_damage");
+        this.safeDropWorldKey = new NamespacedKey(plugin, "safe_drop_world");
+        this.safeDropXKey = new NamespacedKey(plugin, "safe_drop_x");
+        this.safeDropYKey = new NamespacedKey(plugin, "safe_drop_y");
+        this.safeDropZKey = new NamespacedKey(plugin, "safe_drop_z");
+        Bukkit.getScheduler().runTaskTimer(plugin, this::protectDroppedLegendaries, 1L, 5L);
     }
 
     @EventHandler
@@ -131,7 +137,26 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateMjolnirSkyLightning(Player player) {
-        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "mjolnir_sky", MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS)) {
+        long combatTagMillis = configSecondsMillis("abilities.mjolnir.sky-launch.combat-tag-seconds");
+        long lastCombatDamage = player.getPersistentDataContainer().getOrDefault(
+                combatTagKey,
+                PersistentDataType.LONG,
+                0L
+        );
+        if (System.currentTimeMillis() - lastCombatDamage < combatTagMillis) {
+            long secondsRemaining = (combatTagMillis - (System.currentTimeMillis() - lastCombatDamage) + 999L) / 1000L;
+            player.sendActionBar(Component.text(
+                    "Cannot launch while combat-tagged (" + secondsRemaining + "s)",
+                    NamedTextColor.RED
+            ));
+            return;
+        }
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "mjolnir_sky",
+                configSecondsMillis("abilities.mjolnir.sky-launch.cooldown-seconds")
+        )) {
             return;
         }
 
@@ -155,7 +180,11 @@ public class LegendaryListener implements Listener {
                 1.0,
                 0.0
         );
-        launchPlayerNextTick(player, new Vector(0.0, 2.4, 0.0));
+        launchPlayerNextTick(player, new Vector(
+                0.0,
+                plugin.getConfig().getDouble("abilities.mjolnir.sky-launch.vertical-velocity", 2.4),
+                0.0
+        ));
         UUID playerId = player.getUniqueId();
         new BukkitRunnable() {
             private int tick;
@@ -217,12 +246,16 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateAstralWard(Player player) {
-        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "astral_ward", ASTRAL_WARD_COOLDOWN_MILLIS)) {
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "astral_ward",
+                configSecondsMillis("abilities.astral_sovereign.ward.cooldown-seconds")
+        )) {
             return;
         }
 
-        player.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 120, 0, true, false, true));
-        player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 0, true, false, true));
+        plugin.applyConfiguredEffects(player, "abilities.astral_sovereign.ward.effects");
         Location effectLocation = player.getLocation().add(0.0, 1.0, 0.0);
         player.getWorld().spawnParticle(
                 Particle.DUST,
@@ -238,7 +271,19 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateExcavatorHaste(Player player) {
-        player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 200, 99, true, false, true));
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "excavator_haste",
+                configSecondsMillis("abilities.astral_excavator.haste.cooldown-seconds")
+        )) {
+            return;
+        }
+        int amplifier = Math.max(0, plugin.getConfig().getInt("abilities.astral_excavator.haste.amplifier", 100) - 1);
+        int durationTicks = Math.max(1, (int) Math.round(
+                plugin.getConfig().getDouble("abilities.astral_excavator.haste.duration-seconds", 10.0) * 20.0
+        ));
+        player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, durationTicks, amplifier, true, false, true));
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1.0f, 1.8f);
     }
 
@@ -247,7 +292,7 @@ public class LegendaryListener implements Listener {
                 player,
                 player.getInventory().getItemInMainHand(),
                 "shuriken_burst",
-                SHURIKEN_ITEM_COOLDOWN_MILLIS
+                configSecondsMillis("abilities.storm_shuriken.burst.cooldown-seconds")
         )) {
             return;
         }
@@ -274,7 +319,10 @@ public class LegendaryListener implements Listener {
                         ThreadLocalRandom.current().nextDouble(-spread, spread)
                 )).normalize();
                 throwShuriken(player, direction, 1.8);
-                if (++shots >= SHURIKEN_BURST_SIZE) {
+                if (++shots >= Math.max(1, plugin.getConfig().getInt(
+                        "abilities.storm_shuriken.burst.projectile-count",
+                        3
+                ))) {
                     cancel();
                 }
             }
@@ -282,29 +330,48 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateShurikenSpecial(Player player) {
-        if (!tryUseAbility(player, player.getInventory().getItemInMainHand(), "shuriken_special", SHURIKEN_SPECIAL_COOLDOWN_MILLIS)) {
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "shuriken_special",
+                configSecondsMillis("abilities.storm_shuriken.radial.cooldown-seconds")
+        )) {
             return;
         }
 
         Location center = player.getEyeLocation();
-        for (int i = 0; i < SHURIKEN_SPECIAL_SIZE; i++) {
+        int projectileCount = Math.max(1, plugin.getConfig().getInt("abilities.storm_shuriken.radial.projectile-count", 12));
+        for (int i = 0; i < projectileCount; i++) {
             if (!damageShuriken(player)) {
                 break;
             }
-            double angle = 2.0 * Math.PI * i / SHURIKEN_SPECIAL_SIZE;
+            double angle = 2.0 * Math.PI * i / projectileCount;
             Vector direction = new Vector(Math.cos(angle), 0.12, Math.sin(angle)).normalize();
             throwShuriken(player, direction, 1.5);
         }
 
-        for (Entity entity : player.getNearbyEntities(6.0, 4.0, 6.0)) {
+        double radius = Math.max(0.0, plugin.getConfig().getDouble("abilities.storm_shuriken.radial.radius", 6.0));
+        double horizontalKnockback = plugin.getConfig().getDouble(
+                "abilities.storm_shuriken.radial.horizontal-knockback",
+                1.6
+        );
+        double verticalKnockback = plugin.getConfig().getDouble(
+                "abilities.storm_shuriken.radial.vertical-knockback",
+                0.75
+        );
+        double radialDamage = Math.max(0.0, plugin.getConfig().getDouble("abilities.storm_shuriken.radial.damage", 0.0));
+        for (Entity entity : player.getNearbyEntities(radius, radius, radius)) {
             if (!(entity instanceof LivingEntity target) || target.equals(player)) {
                 continue;
+            }
+            if (radialDamage > 0.0) {
+                target.damage(radialDamage, player);
             }
             Vector knockback = target.getLocation().toVector().subtract(player.getLocation().toVector());
             if (knockback.lengthSquared() < 0.001) {
                 knockback = player.getLocation().getDirection().clone();
             }
-            knockback.setY(0.75).normalize().multiply(1.6);
+            knockback.setY(verticalKnockback).normalize().multiply(horizontalKnockback);
             target.setVelocity(knockback);
         }
 
@@ -387,6 +454,32 @@ public class LegendaryListener implements Listener {
         return true;
     }
 
+    private long configSecondsMillis(String path) {
+        double seconds = plugin.getConfig().getDouble(path, 0.0);
+        if (!Double.isFinite(seconds) || seconds < 0.0) {
+            plugin.getLogger().warning("Invalid cooldown duration at '" + path + "'; treating it as zero.");
+            return 0L;
+        }
+        return Math.round(seconds * 1000.0);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPlayerDamagedByPlayer(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player victim) || event.getFinalDamage() <= 0.0) {
+            return;
+        }
+        Player attacker = null;
+        if (event.getDamager() instanceof Player player) {
+            attacker = player;
+        } else if (event.getDamager() instanceof Projectile projectile
+                && projectile.getShooter() instanceof Player player) {
+            attacker = player;
+        }
+        if (attacker != null && !attacker.equals(victim)) {
+            victim.getPersistentDataContainer().set(combatTagKey, PersistentDataType.LONG, System.currentTimeMillis());
+        }
+    }
+
     @EventHandler(ignoreCancelled = true)
     public void onBlockDamage(BlockDamageEvent event) {
         String id = plugin.getLegendaryId(event.getItemInHand());
@@ -400,6 +493,7 @@ public class LegendaryListener implements Listener {
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
         if (areaBreaking.contains(playerId)
+                || !plugin.getConfig().getBoolean("abilities.astral_excavator.area-mining-enabled", true)
                 || !"astral_excavator".equals(plugin.getLegendaryId(player.getInventory().getItemInMainHand()))) {
             return;
         }
@@ -451,7 +545,7 @@ public class LegendaryListener implements Listener {
                 && player.getVelocity().getY() < -0.08
                 && "astral_boots".equals(plugin.getLegendaryId(player.getInventory().getBoots()));
         if (shouldHaveSlowFalling) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 1, true, false, true));
+            plugin.applyConfiguredEffect(player, "effects.astral_boots.slow-falling");
             astralBootSlowFalling.add(playerId);
         } else if (astralBootSlowFalling.remove(playerId)) {
             player.removePotionEffect(PotionEffectType.SLOW_FALLING);
@@ -512,12 +606,20 @@ public class LegendaryListener implements Listener {
         if (event.getEntity() instanceof Item item) {
             String id = plugin.getLegendaryId(item.getItemStack());
             if (id != null) {
-                announceDestructionNextTick(id, cause);
+                Location safe = readSafeDropLocation(item);
+                rescueLegendaryEntity(
+                        item.getItemStack(),
+                        item.getWorld(),
+                        safe == null ? findSafeFallback(item.getWorld(), item.getLocation()) : safe
+                );
             }
         } else if (event.getEntity() instanceof Trident trident) {
-            String id = plugin.getLegendaryId(trident.getItemStack());
-            if (id != null) {
-                announceDestructionNextTick(id, cause);
+            if (plugin.getLegendaryId(trident.getItemStack()) != null) {
+                rescueLegendaryEntity(
+                        trident.getItemStack(),
+                        trident.getWorld(),
+                        findSafeFallback(trident.getWorld(), trident.getLocation())
+                );
             }
         } else if (event.getEntity() instanceof Snowball projectile
                 && projectile.getPersistentDataContainer().has(plugin.getShurikenProjectileKey(), PersistentDataType.BYTE)) {
@@ -592,16 +694,30 @@ public class LegendaryListener implements Listener {
             return;
         }
         if (projectile.getShooter() instanceof Player attacker) {
-            target.damage(SHURIKEN_DAMAGE, attacker);
+            target.damage(
+                    Math.max(0.0, plugin.getConfig().getDouble("abilities.storm_shuriken.projectile-damage", 6.0)),
+                    attacker
+            );
         } else {
-            target.damage(SHURIKEN_DAMAGE);
+            target.damage(Math.max(
+                    0.0,
+                    plugin.getConfig().getDouble("abilities.storm_shuriken.projectile-damage", 6.0)
+            ));
         }
     }
 
     private void applyAstralHit(Player attacker, LivingEntity target) {
-        attacker.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 40, 0));
-        if (ThreadLocalRandom.current().nextDouble() < 0.15) {
-            target.damage(2.0);
+        plugin.applyConfiguredEffects(attacker, "abilities.astral_sovereign.on-hit.effects");
+        double chance = plugin.getConfig().getDouble(
+                "abilities.astral_sovereign.on-hit.astral-burst-chance",
+                0.15
+        );
+        if (ThreadLocalRandom.current().nextDouble() < Math.max(0.0, Math.min(1.0, chance))) {
+            double bonusDamage = Math.max(0.0, plugin.getConfig().getDouble(
+                    "abilities.astral_sovereign.on-hit.bonus-damage",
+                    2.0
+            ));
+            target.damage(bonusDamage);
             target.getWorld().spawnParticle(
                     Particle.DUST,
                     target.getLocation().add(0.0, 1.0, 0.0),
@@ -631,7 +747,12 @@ public class LegendaryListener implements Listener {
             return;
         }
 
-        if (tryUseAbility(attacker, mjolnir, "mjolnir_lightning", MJOLNIR_LIGHTNING_COOLDOWN_MILLIS)) {
+        if (tryUseAbility(
+                attacker,
+                mjolnir,
+                "mjolnir_lightning",
+                configSecondsMillis("abilities.mjolnir.on-hit-lightning.cooldown-seconds")
+        )) {
             strikeMjolnirTarget(target);
         }
     }
@@ -639,8 +760,12 @@ public class LegendaryListener implements Listener {
     private void strikeMjolnirTarget(LivingEntity target) {
         target.getWorld().strikeLightning(target.getLocation());
         var effectLocation = target.getLocation().add(0.0, 1.0, 0.0);
-        for (int strike = 0; strike < 4; strike++) {
-            double angle = (Math.PI * 2.0 * strike) / 4.0;
+        int visualStrikeCount = Math.max(0, plugin.getConfig().getInt(
+                "abilities.mjolnir.on-hit-lightning.visual-strike-count",
+                4
+        ));
+        for (int strike = 0; strike < visualStrikeCount; strike++) {
+            double angle = visualStrikeCount == 0 ? 0.0 : (Math.PI * 2.0 * strike) / visualStrikeCount;
             Location arcLocation = target.getLocation().clone().add(
                     Math.cos(angle) * 1.8,
                     0.0,
@@ -761,9 +886,17 @@ public class LegendaryListener implements Listener {
     public void onItemSpawn(ItemSpawnEvent event) {
         Item itemEntity = event.getEntity();
         if (plugin.getLegendaryId(itemEntity.getItemStack()) != null) {
+            ItemStack stack = itemEntity.getItemStack();
+            plugin.refreshLegendaryItemStack(stack);
+            itemEntity.setItemStack(stack);
             itemEntity.setGlowing(true);
             itemEntity.setUnlimitedLifetime(true);
             itemEntity.setInvulnerable(true);
+            if (isSafeDropLocation(itemEntity.getLocation())) {
+                storeSafeDropLocation(itemEntity, itemEntity.getLocation());
+            } else {
+                storeSafeDropLocation(itemEntity, findSafeFallback(itemEntity.getWorld(), itemEntity.getLocation()));
+            }
             String id = plugin.getLegendaryId(itemEntity.getItemStack());
             Location location = itemEntity.getLocation();
             itemEntity.getWorld().spawnParticle(
@@ -779,18 +912,17 @@ public class LegendaryListener implements Listener {
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onItemPickup(EntityPickupItemEvent event) {
-        if (event.getEntity() instanceof Player player) {
-            String pickedId = plugin.getLegendaryId(event.getItem().getItemStack());
-            if (pickedId != null) {
-                plugin.transferLegendaryOwnership(pickedId, player);
-            }
-        }
         String id = plugin.getLegendaryId(event.getItem().getItemStack());
         if (id == null) {
             return;
         }
+        if (!(event.getEntity() instanceof Player player)) {
+            event.setCancelled(true);
+            return;
+        }
+        plugin.transferLegendaryOwnership(id, player);
 
         Location location = event.getEntity().getLocation().add(0.0, 1.0, 0.0);
         event.getEntity().getWorld().spawnParticle(
@@ -807,24 +939,129 @@ public class LegendaryListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLegendaryItemDespawn(ItemDespawnEvent event) {
+        if (plugin.getLegendaryId(event.getEntity().getItemStack()) != null) {
+            event.setCancelled(true);
+            event.getEntity().setUnlimitedLifetime(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onItemDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Item itemEntity) {
-            String id = plugin.getLegendaryId(itemEntity.getItemStack());
-            if (id != null && event.getCause() == EntityDamageEvent.DamageCause.VOID) {
-                itemEntity.remove();
-                Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(id, "lost to the void"));
-            } else if (id != null) {
+            if (plugin.getLegendaryId(itemEntity.getItemStack()) != null) {
                 event.setCancelled(true);
             }
         } else if (event.getEntity() instanceof Trident trident
                 && plugin.getLegendaryId(trident.getItemStack()) != null) {
-            String id = plugin.getLegendaryId(trident.getItemStack());
-            if (event.getCause() == EntityDamageEvent.DamageCause.VOID) {
-                Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary(id, "lost to the void"));
-            } else {
-                event.setCancelled(true);
+            event.setCancelled(true);
+        }
+    }
+
+    private void protectDroppedLegendaries() {
+        for (World world : Bukkit.getWorlds()) {
+            for (Item item : world.getEntitiesByClass(Item.class)) {
+                if (plugin.getLegendaryId(item.getItemStack()) == null) {
+                    continue;
+                }
+                item.setInvulnerable(true);
+                item.setUnlimitedLifetime(true);
+                Location location = item.getLocation();
+                if (location.getY() < world.getMinHeight() + 2.0 || isHazardousLocation(location)) {
+                    Location safe = readSafeDropLocation(item);
+                    if (safe == null) {
+                        safe = findSafeFallback(world, location);
+                    }
+                    item.teleport(safe);
+                    item.setVelocity(new Vector());
+                } else if (isSafeDropLocation(location)) {
+                    storeSafeDropLocation(item, location);
+                }
             }
         }
+    }
+
+    private boolean isSafeDropLocation(Location location) {
+        if (location.getWorld() == null || location.getY() < location.getWorld().getMinHeight() + 2.0) {
+            return false;
+        }
+        Material current = location.getBlock().getType();
+        Material below = location.clone().subtract(0.0, 0.1, 0.0).getBlock().getType();
+        if (isHazardousDropMaterial(current) || isHazardousDropMaterial(below)) {
+            return false;
+        }
+        return below.isSolid() || location.getWorld().getPlayers().stream()
+                .anyMatch(player -> player.getLocation().distanceSquared(location) <= 64.0);
+    }
+
+    private boolean isHazardousLocation(Location location) {
+        return isHazardousDropMaterial(location.getBlock().getType())
+                || isHazardousDropMaterial(location.clone().subtract(0.0, 0.1, 0.0).getBlock().getType());
+    }
+
+    private boolean isHazardousDropMaterial(Material material) {
+        return material == Material.LAVA
+                || material == Material.FIRE
+                || material == Material.SOUL_FIRE
+                || material == Material.CACTUS
+                || material == Material.MAGMA_BLOCK;
+    }
+
+    private void storeSafeDropLocation(Item item, Location location) {
+        if (location == null || location.getWorld() == null) {
+            return;
+        }
+        var data = item.getPersistentDataContainer();
+        data.set(safeDropWorldKey, PersistentDataType.STRING, location.getWorld().getName());
+        data.set(safeDropXKey, PersistentDataType.DOUBLE, location.getX());
+        data.set(safeDropYKey, PersistentDataType.DOUBLE, location.getY());
+        data.set(safeDropZKey, PersistentDataType.DOUBLE, location.getZ());
+    }
+
+    private Location readSafeDropLocation(Item item) {
+        var data = item.getPersistentDataContainer();
+        String worldName = data.get(safeDropWorldKey, PersistentDataType.STRING);
+        World world = worldName == null ? null : Bukkit.getWorld(worldName);
+        if (world == null
+                || !data.has(safeDropXKey, PersistentDataType.DOUBLE)
+                || !data.has(safeDropYKey, PersistentDataType.DOUBLE)
+                || !data.has(safeDropZKey, PersistentDataType.DOUBLE)) {
+            return null;
+        }
+        return new Location(
+                world,
+                data.get(safeDropXKey, PersistentDataType.DOUBLE),
+                data.get(safeDropYKey, PersistentDataType.DOUBLE),
+                data.get(safeDropZKey, PersistentDataType.DOUBLE)
+        );
+    }
+
+    private Location findSafeFallback(World world, Location near) {
+        int highestY = world.getHighestBlockYAt(near);
+        if (highestY > world.getMinHeight() + 1) {
+            Location candidate = new Location(world, near.getBlockX() + 0.5, highestY + 1.1, near.getBlockZ() + 0.5);
+            if (!isHazardousDropMaterial(candidate.getBlock().getType())) {
+                return candidate;
+            }
+        }
+        Location spawn = world.getSpawnLocation();
+        int spawnY = world.getHighestBlockYAt(spawn);
+        if (spawnY > world.getMinHeight() + 1) {
+            spawn.setY(spawnY + 1.1);
+        }
+        return spawn;
+    }
+
+    private void rescueLegendaryEntity(ItemStack stack, World world, Location safeLocation) {
+        ItemStack restoredStack = stack.clone();
+        Location destination = safeLocation == null ? findSafeFallback(world, world.getSpawnLocation()) : safeLocation.clone();
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            Item restored = world.dropItem(destination, restoredStack);
+            restored.setInvulnerable(true);
+            restored.setUnlimitedLifetime(true);
+            restored.setGlowing(true);
+            storeSafeDropLocation(restored, destination);
+        });
     }
 
     private void announceDestructionNextTick(String id, EntityRemoveEvent.Cause cause) {

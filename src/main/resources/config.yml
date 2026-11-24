@@ -16,3 +16,167 @@ lifesteal:
   zero-hearts-action: ban
   zero-hearts-ban-seconds: 86400
   players: {}
+
+# Recipe shapes are three rows of three slots. Spaces in a row are empty.
+# Every non-space character in shape must have a matching ingredient below.
+recipes:
+  astral_sovereign:
+    enabled: true
+    shape: ["DHD", "NSN", "DED"]
+    ingredients:
+      D: DIAMOND_BLOCK
+      H: HEAVY_CORE
+      N: NETHER_STAR
+      S: NETHERITE_SWORD
+      E: END_ROD
+  mjolnir:
+    enabled: true
+    shape: ["HNH", "AMA", "BNB"]
+    ingredients:
+      H: HEAVY_CORE
+      N: NETHER_STAR
+      A: ENCHANTED_GOLDEN_APPLE
+      M: MACE
+      B: BREEZE_ROD
+  storm_shuriken:
+    enabled: true
+    shape: ["PBP", "ESE", "P P"]
+    ingredients:
+      P: PRISMARINE_CRYSTALS
+      B: BREEZE_ROD
+      E: ECHO_SHARD
+      S: SNOWBALL
+  astral_helmet:
+    enabled: true
+    shape: ["ESE", "N H", " E "]
+    ingredients:
+      E: ECHO_SHARD
+      S: NETHER_STAR
+      N: NETHERITE_HELMET
+      H: HEAVY_CORE
+  astral_chestplate:
+    enabled: true
+    shape: ["EHE", "NSN", "E E"]
+    ingredients:
+      E: ECHO_SHARD
+      H: HEAVY_CORE
+      N: NETHER_STAR
+      S: NETHERITE_CHESTPLATE
+  astral_excavator:
+    enabled: true
+    shape: ["GNG", "EPE", "G G"]
+    ingredients:
+      G: GOLD_BLOCK
+      N: NETHER_STAR
+      E: ECHO_SHARD
+      P: NETHERITE_PICKAXE
+  astral_leggings:
+    enabled: true
+    shape: ["ENE", "ELE", "N N"]
+    ingredients:
+      E: ECHO_SHARD
+      N: NETHER_STAR
+      L: NETHERITE_LEGGINGS
+  astral_boots:
+    enabled: true
+    shape: ["E E", "NBN", "E E"]
+    ingredients:
+      E: ECHO_SHARD
+      N: NETHER_STAR
+      B: NETHERITE_BOOTS
+  heart_of_life:
+    enabled: true
+    shape: ["ESE", "DHD", "ESE"]
+    ingredients:
+      E: ECHO_SHARD
+      S: NETHER_STAR
+      D: DIAMOND_BLOCK
+      H: HEART_OF_THE_SEA
+
+item-stats:
+  durability-multipliers:
+    default: 1.1
+    astral_excavator: 9.0
+  heart-repair-fraction: 0.33
+  items:
+    astral_sovereign:
+      attack-damage: 10.0
+      attack-speed: 1.6
+    mjolnir:
+      attack-damage: 12.0
+      attack-speed: 0.7
+    storm_shuriken:
+      attack-damage: 1.0
+      attack-speed: 1.0
+    astral_excavator:
+      attack-damage: 7.0
+      attack-speed: 1.2
+    astral_chestplate:
+      max-health-bonus: 2.0
+  enchantments:
+    astral_excavator:
+      efficiency: 5
+    mjolnir:
+      wind_burst: 2
+
+# Potion amplifiers use Bukkit's zero-based values. Duration values are ticks.
+effects:
+  astral_sovereign:
+    speed: {type: SPEED, amplifier: 0, duration-ticks: 45}
+    jump-boost: {type: JUMP_BOOST, amplifier: 0, duration-ticks: 45}
+    night-vision: {type: NIGHT_VISION, amplifier: 0, duration-ticks: 260}
+  astral_helmet:
+    night-vision: {type: NIGHT_VISION, amplifier: 0, duration-ticks: 260}
+    water-breathing: {type: WATER_BREATHING, amplifier: 0, duration-ticks: 45}
+  astral_chestplate:
+    resistance: {type: RESISTANCE, amplifier: 0, duration-ticks: 45}
+  astral_leggings:
+    speed: {type: SPEED, amplifier: 0, duration-ticks: 45}
+    jump-boost: {type: JUMP_BOOST, amplifier: 0, duration-ticks: 45}
+  astral_boots:
+    passive:
+      dolphins-grace: {type: DOLPHINS_GRACE, amplifier: 0, duration-ticks: 45}
+      speed: {type: SPEED, amplifier: 0, duration-ticks: 45}
+    slow-falling: {type: SLOW_FALLING, amplifier: 1, duration-ticks: 100}
+  astral_set:
+    regeneration: {type: REGENERATION, amplifier: 0, duration-ticks: 30}
+    fire-resistance: {type: FIRE_RESISTANCE, amplifier: 0, duration-ticks: 45}
+
+abilities:
+  astral_sovereign:
+    on-hit:
+      astral-burst-chance: 0.15
+      bonus-damage: 2.0
+      effects:
+        regeneration: {type: REGENERATION, amplifier: 0, duration-ticks: 40}
+    ward:
+      cooldown-seconds: 30
+      effects:
+        absorption: {type: ABSORPTION, amplifier: 0, duration-ticks: 120}
+        regeneration: {type: REGENERATION, amplifier: 0, duration-ticks: 100}
+  mjolnir:
+    on-hit-lightning:
+      cooldown-seconds: 15
+      visual-strike-count: 4
+    sky-launch:
+      cooldown-seconds: 90
+      vertical-velocity: 2.4
+      combat-tag-seconds: 5
+  storm_shuriken:
+    burst:
+      cooldown-seconds: 2.5
+      projectile-count: 3
+    projectile-damage: 6.0
+    radial:
+      cooldown-seconds: 8
+      projectile-count: 12
+      radius: 6.0
+      horizontal-knockback: 1.6
+      vertical-knockback: 0.75
+      damage: 0.0
+  astral_excavator:
+    area-mining-enabled: true
+    haste:
+      amplifier: 100
+      duration-seconds: 10
+      cooldown-seconds: 60

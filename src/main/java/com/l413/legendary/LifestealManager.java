@@ -30,7 +30,6 @@ import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
@@ -45,8 +44,6 @@ public final class LifestealManager implements Listener {
     private static final int HEART_UNITS_VERSION = 2;
     private static final int DEFAULT_STARTING_HEARTS = 20;
     private static final int MAX_CONFIGURED_HEARTS = 80;
-    private static final int HEART_REPAIR_PERCENT = 33;
-
     private final LegendaryPlugin plugin;
     private final NamespacedKey heartKey;
     private final Map<UUID, Inventory> openMenus = new HashMap<>();
@@ -66,15 +63,21 @@ public final class LifestealManager implements Listener {
     }
 
     public void registerHeartRecipe() {
-        ShapedRecipe recipe = new ShapedRecipe(
-                new NamespacedKey(plugin, "craft_life_heart"),
-                createHeartItem()
+        NamespacedKey recipeKey = new NamespacedKey(plugin, "craft_life_heart");
+        Bukkit.removeRecipe(recipeKey);
+        LegendaryRegistry.registerConfiguredRecipe(
+                plugin,
+                recipeKey,
+                createHeartItem(),
+                "heart_of_life",
+                recipe -> {
+                    recipe.shape("ESE", "DHD", "ESE");
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('S', Material.NETHER_STAR);
+                    recipe.setIngredient('D', Material.DIAMOND_BLOCK);
+                    recipe.setIngredient('H', Material.HEART_OF_THE_SEA);
+                }
         );
-        recipe.shape("SES", "EHE", "SES");
-        recipe.setIngredient('S', Material.NETHER_STAR);
-        recipe.setIngredient('E', Material.ECHO_SHARD);
-        recipe.setIngredient('H', Material.HEART_OF_THE_SEA);
-        Bukkit.addRecipe(recipe);
     }
 
     public ItemStack createHeartItem() {
@@ -83,8 +86,10 @@ public final class LifestealManager implements Listener {
         meta.displayName(Component.text("Heart of Life", NamedTextColor.RED));
         meta.lore(java.util.List.of(
                 Component.text("Right-click to gain one permanent half-heart.", NamedTextColor.GRAY),
-                Component.text("Place in an anvil with damaged legendary gear to restore 33% durability.", NamedTextColor.GOLD),
-                Component.text("Crafted with four Nether Stars, four Echo Shards, and a Heart of the Sea.", NamedTextColor.DARK_GRAY)
+                Component.text("Place in an anvil with damaged legendary gear to restore "
+                        + Math.round(plugin.getConfig().getDouble("item-stats.heart-repair-fraction", 0.33) * 100.0)
+                        + "% durability.", NamedTextColor.GOLD),
+                Component.text("Crafted with two Nether Stars, four Echo Shards, two Diamond Blocks, and a Heart of the Sea.", NamedTextColor.DARK_GRAY)
         ));
         meta.getPersistentDataContainer().set(heartKey, PersistentDataType.BYTE, (byte) 1);
         heart.setItemMeta(meta);
@@ -241,7 +246,8 @@ public final class LifestealManager implements Listener {
                 event.getView().setRepairCost(0);
                 return;
             }
-            int repairAmount = (int) Math.ceil(maxDamage * HEART_REPAIR_PERCENT / 100.0);
+            double repairFraction = plugin.getConfig().getDouble("item-stats.heart-repair-fraction", 0.33);
+            int repairAmount = (int) Math.ceil(maxDamage * Math.max(0.0, Math.min(1.0, repairFraction)));
             repaired.setData(DataComponentTypes.DAMAGE, Math.max(0, currentDamage - repairAmount));
             event.setResult(repaired);
             event.getView().setRepairCost(1);
@@ -596,20 +602,10 @@ public final class LifestealManager implements Listener {
             return false;
         }
         LegendaryItem definition = plugin.getRegistry().getById(legendaryId);
-        java.util.Map<org.bukkit.enchantments.Enchantment, Integer> requiredEnchantments = definition == null
-                ? java.util.Map.of()
-                : definition.requiredEnchantments();
-        ItemMeta meta = item.getItemMeta();
-        if (meta.getEnchants().equals(requiredEnchantments)
-                && Boolean.valueOf(!requiredEnchantments.isEmpty()).equals(meta.getEnchantmentGlintOverride())) {
+        if (definition == null) {
             return false;
         }
-        for (org.bukkit.enchantments.Enchantment enchantment : new java.util.ArrayList<>(meta.getEnchants().keySet())) {
-            meta.removeEnchant(enchantment);
-        }
-        requiredEnchantments.forEach((enchantment, level) -> meta.addEnchant(enchantment, level, true));
-        meta.setEnchantmentGlintOverride(!requiredEnchantments.isEmpty());
-        item.setItemMeta(meta);
+        definition.refreshConfigurableData(item, plugin);
         return true;
     }
 }

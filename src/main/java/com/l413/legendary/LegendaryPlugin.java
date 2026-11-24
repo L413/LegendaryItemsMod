@@ -14,6 +14,7 @@ import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
+import org.bukkit.Registry;
 import org.bukkit.World;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Container;
@@ -21,6 +22,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.Trident;
@@ -28,6 +30,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -35,6 +38,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -48,6 +52,11 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -66,6 +75,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     private final Map<String, OfflineBeacon> offlineBeacons = new HashMap<>();
     private final Set<String> trackedGlowEntries = new HashSet<>();
     private final Map<String, Long> ownershipAnnouncementCooldowns = new HashMap<>();
+    private final Set<String> configWarnings = new HashSet<>();
 
     private record TrackedTarget(String id, String displayName, Location location, UUID holderUuid, String statusLabel) {}
     private record OfflineBeacon(UUID ownerId, String worldName, double x, double y, double z) {}
@@ -73,6 +83,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        mergePackagedConfigDefaults();
         this.itemKey = new NamespacedKey(this, "legendary_id");
         this.shurikenProjectileKey = new NamespacedKey(this, "shuriken_projectile");
         this.registry = new LegendaryRegistry(this);
@@ -88,6 +99,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
 
         registerCommands();
+        refreshAllLoadedLegendaryItems();
 
         // Fast visual loop (every 10 ticks / 0.5s): sky beacons, glowing, and proximity boss bar
         Bukkit.getScheduler().runTaskTimer(this, this::updateBeaconsAndProximity, 20L, 10L);
@@ -115,7 +127,13 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onLegendaryOwnerJoin(PlayerJoinEvent event) {
+        refreshPlayerLegendaryItems(event.getPlayer());
         handleLegendaryLogin(event.getPlayer());
+    }
+
+    @EventHandler
+    public void onLegendaryChunkLoad(ChunkLoadEvent event) {
+        refreshLoadedChunk(event.getChunk());
     }
 
     private void registerCommands() {
@@ -171,7 +189,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 }
                 if (args.length == 0) {
                     source.getSender().sendMessage(Component.text(
-                            "Usage: /legendary <give|destroyall|settings>",
+                            "Usage: /legendary <give|destroyall|settings|reload>",
                             NamedTextColor.YELLOW
                     ));
                     return;
@@ -192,8 +210,15 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                                 NamedTextColor.GREEN
                         ));
                     }
+                    case "reload" -> {
+                        reloadPluginConfiguration();
+                        source.getSender().sendMessage(Component.text(
+                                "Legends & Lifesteal configuration and recipes reloaded.",
+                                NamedTextColor.GREEN
+                        ));
+                    }
                     default -> source.getSender().sendMessage(Component.text(
-                            "Usage: /legendary <give|destroyall|settings>",
+                            "Usage: /legendary <give|destroyall|settings|reload>",
                             NamedTextColor.YELLOW
                     ));
                 }
@@ -202,7 +227,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             @Override
             public Collection<String> suggest(CommandSourceStack source, String[] args) {
                 if (args.length <= 1) {
-                    return List.of("give", "destroyall", "settings");
+                    return List.of("give", "destroyall", "settings", "reload");
                 }
                 if (args.length == 2 && "give".equalsIgnoreCase(args[0])) {
                     return registry.getAll().stream().map(LegendaryItem::id).toList();
@@ -210,6 +235,141 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 return List.of();
             }
         });
+    }
+
+    private void mergePackagedConfigDefaults() {
+        try (InputStream resource = Objects.requireNonNull(getResource("config.yml"), "Packaged config.yml is missing.")) {
+            YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
+                    new InputStreamReader(resource, StandardCharsets.UTF_8)
+            );
+            getConfig().setDefaults(defaults);
+            getConfig().options().copyDefaults(true);
+            saveConfig();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not load packaged config.yml defaults.", exception);
+        }
+    }
+
+    public void reloadPluginConfiguration() {
+        reloadConfig();
+        configWarnings.clear();
+        mergePackagedConfigDefaults();
+        registry.reloadRecipes();
+        lifestealManager.registerHeartRecipe();
+        refreshAllLoadedLegendaryItems();
+    }
+
+    private void refreshAllLoadedLegendaryItems() {
+        for (World world : Bukkit.getWorlds()) {
+            for (Chunk chunk : world.getLoadedChunks()) {
+                refreshLoadedChunk(chunk);
+            }
+        }
+    }
+
+    private void refreshLoadedChunk(Chunk chunk) {
+        for (BlockState state : chunk.getTileEntities()) {
+            if (state instanceof Container container) {
+                refreshInventory(container.getInventory());
+            }
+        }
+        for (Entity entity : chunk.getEntities()) {
+            if (entity instanceof Player player) {
+                refreshPlayerLegendaryItems(player);
+            } else if (entity instanceof Item item) {
+                ItemStack stack = item.getItemStack();
+                refreshLegendaryStack(stack);
+                item.setItemStack(stack);
+            } else if (entity instanceof Trident trident) {
+                ItemStack stack = trident.getItemStack();
+                refreshLegendaryStack(stack);
+                trident.setItemStack(stack);
+            } else if (entity instanceof Snowball snowball
+                    && snowball.getPersistentDataContainer().has(shurikenProjectileKey, PersistentDataType.BYTE)) {
+                ItemStack stack = snowball.getItem();
+                refreshLegendaryStack(stack);
+                snowball.setItem(stack);
+            } else if (entity instanceof ItemFrame itemFrame) {
+                ItemStack stack = itemFrame.getItem();
+                refreshLegendaryStack(stack);
+                itemFrame.setItem(stack);
+            } else if (entity instanceof ArmorStand armorStand && armorStand.getEquipment() != null) {
+                ItemStack[] equipment = armorStand.getEquipment().getArmorContents();
+                for (int slot = 0; slot < equipment.length; slot++) {
+                    refreshLegendaryStack(equipment[slot]);
+                }
+                armorStand.getEquipment().setArmorContents(equipment);
+                ItemStack hand = armorStand.getEquipment().getItemInMainHand();
+                refreshLegendaryStack(hand);
+                armorStand.getEquipment().setItemInMainHand(hand);
+                ItemStack offhand = armorStand.getEquipment().getItemInOffHand();
+                refreshLegendaryStack(offhand);
+                armorStand.getEquipment().setItemInOffHand(offhand);
+            } else if (entity instanceof InventoryHolder holder) {
+                refreshInventory(holder.getInventory());
+            }
+        }
+    }
+
+    private void refreshPlayerLegendaryItems(Player player) {
+        refreshInventory(player.getInventory());
+        refreshInventory(player.getEnderChest());
+    }
+
+    private void refreshInventory(Inventory inventory) {
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (getLegendaryId(stack) != null) {
+                refreshLegendaryStack(stack);
+                inventory.setItem(slot, stack);
+            }
+        }
+    }
+
+    private void refreshLegendaryStack(ItemStack stack) {
+        String id = getLegendaryId(stack);
+        LegendaryItem definition = id == null ? null : registry.getById(id);
+        if (definition != null) {
+            definition.refreshConfigurableData(stack, this);
+        }
+    }
+
+    public void refreshLegendaryItemStack(ItemStack stack) {
+        refreshLegendaryStack(stack);
+    }
+
+    public void applyConfiguredEffects(Player player, String path) {
+        var effects = getConfig().getConfigurationSection(path);
+        if (effects == null) {
+            return;
+        }
+        for (String key : effects.getKeys(false)) {
+            applyConfiguredEffect(player, path + "." + key);
+        }
+    }
+
+    public void applyConfiguredEffect(Player player, String path) {
+        var definition = getConfig().getConfigurationSection(path);
+        if (definition == null) {
+            warnConfigOnce(path, "Expected an effect configuration section.");
+            return;
+        }
+        String typeName = definition.getString("type", "");
+        NamespacedKey effectKey = NamespacedKey.minecraft(typeName.toLowerCase(java.util.Locale.ROOT));
+        var type = Registry.POTION_EFFECT_TYPE.get(effectKey);
+        int duration = definition.getInt("duration-ticks", 0);
+        int amplifier = definition.getInt("amplifier", 0);
+        if (type == null || duration <= 0 || amplifier < 0) {
+            warnConfigOnce(path, "Invalid potion effect type, duration, or amplifier.");
+            return;
+        }
+        player.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, true));
+    }
+
+    private void warnConfigOnce(String path, String message) {
+        if (configWarnings.add(path)) {
+            getLogger().warning("Invalid configuration at '" + path + "': " + message);
+        }
     }
 
     private void setHeartsCommand(CommandSourceStack source, String[] args) {
@@ -901,11 +1061,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
 
         switch (id) {
-            case "astral_sovereign" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
-            }
+            case "astral_sovereign" -> applyConfiguredEffects(player, "effects.astral_sovereign");
             default -> {
             }
         }
@@ -918,27 +1074,23 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         String bootsId = getLegendaryId(player.getInventory().getBoots());
 
         if ("astral_helmet".equals(helmetId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 45, 0, true, false, true));
+            applyConfiguredEffects(player, "effects.astral_helmet");
         }
         if ("astral_chestplate".equals(chestplateId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, true, false, true));
+            applyConfiguredEffects(player, "effects.astral_chestplate");
         }
         if ("astral_leggings".equals(leggingsId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
+            applyConfiguredEffects(player, "effects.astral_leggings");
         }
         if ("astral_boots".equals(bootsId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 45, 0, true, false, true));
+            applyConfiguredEffects(player, "effects.astral_boots.passive");
         }
 
         if ("astral_helmet".equals(helmetId)
                 && "astral_chestplate".equals(chestplateId)
                 && "astral_leggings".equals(leggingsId)
                 && "astral_boots".equals(bootsId)) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 30, 0, true, false, true));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 45, 0, true, false, true));
+            applyConfiguredEffects(player, "effects.astral_set");
             if (player.isSprinting()) {
                 player.getWorld().spawnParticle(
                         Particle.DUST,

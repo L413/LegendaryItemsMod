@@ -7,12 +7,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class LegendaryRegistry {
     private final LegendaryPlugin plugin;
@@ -62,7 +64,7 @@ public class LegendaryRegistry {
                 0.7,
                 List.of(
                         Component.text("The one and only Storm God's weapon.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("A mighty mace forged from four Heavy Cores. Wind Burst II.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Forged from two Heavy Cores and two Breeze Rods. Wind Burst II.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
                         Component.text("On hit: real lightning strikes your target, with four surrounding visual bolts (15s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Sneak + right-click air while looking up: a vertical launch surrounded by repeated spiraling sky lightning (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
@@ -70,9 +72,10 @@ public class LegendaryRegistry {
                     recipe.shape(
                             "HNH",
                             "AMA",
-                            "HNH"
+                            "BNB"
                     );
                     recipe.setIngredient('H', Material.HEAVY_CORE);
+                    recipe.setIngredient('B', Material.BREEZE_ROD);
                     recipe.setIngredient('N', Material.NETHER_STAR);
                     recipe.setIngredient('A', Material.ENCHANTED_GOLDEN_APPLE);
                     recipe.setIngredient('M', Material.MACE);
@@ -88,7 +91,7 @@ public class LegendaryRegistry {
                 1.0,
                 List.of(
                         Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Right-click: throw a 3-shuriken burst (1-second cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Right-click: throw a 3-shuriken burst (2.5-second cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Sneak + right-click the top of a block: throw 12 shurikens radially and knock back nearby creatures (8s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Each shuriken hit deals 6 damage.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Durability: 10% above a Netherite sword.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
@@ -171,7 +174,7 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
                         Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak + right-click: Haste C for 10 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click: Haste C for 10 seconds (60-second cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Durability: 9x a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
@@ -247,10 +250,78 @@ public class LegendaryRegistry {
         if (item.recipeConfigurator() == null) {
             return;
         }
+        registerRecipe(item);
+    }
+
+    public void reloadRecipes() {
+        for (LegendaryItem item : items.values()) {
+            if (item.recipeConfigurator() != null) {
+                registerRecipe(item);
+            }
+        }
+    }
+
+    private void registerRecipe(LegendaryItem item) {
         NamespacedKey recipeKey = new NamespacedKey(plugin, "craft_" + item.id());
-        ShapedRecipe recipe = new ShapedRecipe(recipeKey, item.createItemStack(plugin));
-        item.recipeConfigurator().accept(recipe);
-        Bukkit.addRecipe(recipe);
+        Bukkit.removeRecipe(recipeKey);
+        registerConfiguredRecipe(plugin, recipeKey, item.createItemStack(plugin), item.id(), item.recipeConfigurator());
+    }
+
+    public static boolean registerConfiguredRecipe(
+            LegendaryPlugin plugin,
+            NamespacedKey recipeKey,
+            ItemStack result,
+            String recipeId,
+            Consumer<ShapedRecipe> fallback
+    ) {
+        String path = "recipes." + recipeId;
+        if (!plugin.getConfig().getBoolean(path + ".enabled", true)) {
+            return false;
+        }
+
+        ShapedRecipe recipe = new ShapedRecipe(recipeKey, result);
+        var section = plugin.getConfig().getConfigurationSection(path);
+        boolean valid = section != null;
+        List<String> shape = section == null ? List.of() : section.getStringList("shape");
+        if (shape.size() != 3 || shape.stream().anyMatch(row -> row.length() != 3)) {
+            valid = false;
+        }
+
+        var ingredients = section == null ? null : section.getConfigurationSection("ingredients");
+        if (ingredients == null) {
+            valid = false;
+        }
+        if (valid) {
+            try {
+                recipe.shape(shape.toArray(String[]::new));
+                for (String row : shape) {
+                    for (char symbol : row.toCharArray()) {
+                        if (symbol == ' ') {
+                            continue;
+                        }
+                        String materialName = ingredients.getString(String.valueOf(symbol));
+                        Material material = materialName == null ? null : Material.matchMaterial(materialName);
+                        if (material == null || !material.isItem()) {
+                            valid = false;
+                            break;
+                        }
+                        recipe.setIngredient(symbol, material);
+                    }
+                    if (!valid) {
+                        break;
+                    }
+                }
+            } catch (IllegalArgumentException exception) {
+                valid = false;
+            }
+        }
+
+        if (!valid) {
+            plugin.getLogger().warning("Invalid recipe configuration at '" + path + "'; using the built-in recipe.");
+            recipe = new ShapedRecipe(recipeKey, result);
+            fallback.accept(recipe);
+        }
+        return Bukkit.addRecipe(recipe);
     }
 
     public LegendaryItem getById(String id) {
