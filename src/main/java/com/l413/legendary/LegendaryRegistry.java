@@ -223,7 +223,7 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("While worn: Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak while falling to gain extended Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak while falling to gain Slow Falling II; it ends when you release sneak or land.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {

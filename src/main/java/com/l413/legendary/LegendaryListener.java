@@ -39,6 +39,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerToggleSneakEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -67,6 +68,7 @@ public class LegendaryListener implements Listener {
     private final Map<UUID, Long> mjolnirLightningCooldowns = new HashMap<>();
     private final Map<String, Map<UUID, Long>> abilityCooldowns = new HashMap<>();
     private final Set<UUID> areaBreaking = new HashSet<>();
+    private final Set<UUID> astralBootSlowFalling = new HashSet<>();
 
     public LegendaryListener(LegendaryPlugin plugin) {
         this.plugin = plugin;
@@ -76,6 +78,7 @@ public class LegendaryListener implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         plugin.removeBossBar(event.getPlayer());
         abilityCooldowns.values().forEach(cooldowns -> cooldowns.remove(event.getPlayer().getUniqueId()));
+        astralBootSlowFalling.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -437,11 +440,23 @@ public class LegendaryListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
-        if (player.isSneaking()
+        UUID playerId = player.getUniqueId();
+        boolean shouldHaveSlowFalling = player.isSneaking()
                 && !player.isOnGround()
                 && player.getVelocity().getY() < -0.08
-                && "astral_boots".equals(plugin.getLegendaryId(player.getInventory().getBoots()))) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 0, true, false, true));
+                && "astral_boots".equals(plugin.getLegendaryId(player.getInventory().getBoots()));
+        if (shouldHaveSlowFalling) {
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 1, true, false, true));
+            astralBootSlowFalling.add(playerId);
+        } else if (astralBootSlowFalling.remove(playerId)) {
+            player.removePotionEffect(PotionEffectType.SLOW_FALLING);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerToggleSneak(PlayerToggleSneakEvent event) {
+        if (!event.isSneaking() && astralBootSlowFalling.remove(event.getPlayer().getUniqueId())) {
+            event.getPlayer().removePotionEffect(PotionEffectType.SLOW_FALLING);
         }
     }
 
