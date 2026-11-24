@@ -1,1 +1,1 @@
-rootProject.name = "LegendaryItems"
+rootProject.name = "LegendsAndLifesteal"

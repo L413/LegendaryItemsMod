@@ -97,7 +97,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         // Scoreboard refresh loop (every 40 ticks / 2s): updates rounded coordinates sidebar
         Bukkit.getScheduler().runTaskTimer(this, this::updateScoreboards, 20L, 40L);
 
-        getLogger().info("LegendaryWeapons (com.l413) enabled with " + registry.getAll().size() + " legendary item(s).");
+        getLogger().info("Legends & Lifesteal enabled with " + registry.getAll().size() + " legendary item(s).");
     }
 
     @Override

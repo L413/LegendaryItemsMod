@@ -1,4 +1,4 @@
-# LegendaryItemsMod
+# Legends & Lifesteal
 
 A Paper 26.3 plugin adding one-of-a-kind legendary weapons, Astral armor,
 custom tracking, and Lifesteal hearts. Install the plugin JAR on the server.
