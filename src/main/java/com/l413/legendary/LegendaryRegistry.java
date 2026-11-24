@@ -64,9 +64,8 @@ public class LegendaryRegistry {
                         Component.text("The one and only Storm God's weapon.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
                         Component.text("A mighty mace forged from four Heavy Cores.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
                         Component.text("Wind Burst I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("On hit: calls real lightning down on your target.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak + right-click: calls harmless lightning from the sky (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Lightning strike ability has a 10-second cooldown.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("On hit: strikes your target with real lightning (15s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click air while looking up: harmless sky lightning and a vertical launch (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -90,10 +89,10 @@ public class LegendaryRegistry {
                 1.0,
                 List.of(
                         Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Right-click air: throw a 3-shuriken burst (12s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Right-click the top of a block: throw 12 in every direction.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Radial burst launches nearby enemies with Wind Burst (8s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Each hit deals damage; has 10% more durability than Netherite.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Right-click: throw a 3-shuriken burst (1-second cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click the top of a block: throw 12 shurikens radially and knock back nearby creatures (8s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Each shuriken hit deals 6 damage.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Durability: 10% above a Netherite sword.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -117,7 +116,8 @@ public class LegendaryRegistry {
                 0.0,
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("While worn: Night Vision and Water Breathing.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("While worn: Night Vision and Water Breathing.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.HEAD,
@@ -134,7 +134,8 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("While worn: Resistance I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("+2 maximum health.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("+2 maximum health.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.CHEST,
@@ -150,7 +151,8 @@ public class LegendaryRegistry {
                 1.2,
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Durability: 10% above a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -174,7 +176,8 @@ public class LegendaryRegistry {
                 0.0,
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("While worn: Speed I and Jump Boost I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("While worn: Speed I and Jump Boost I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.LEGS,
@@ -191,7 +194,8 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("While worn: Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak while falling to gain Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Sneak while falling to gain Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 null,
                 EquipmentSlot.FEET,

@@ -178,14 +178,6 @@ public class LegendaryPlugin extends JavaPlugin {
                     targets.add(new TrackedTarget(id, name, dropped.getLocation(), null, "DROPPED"));
                 }
             }
-            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
-                if (isShurikenProjectile(projectile)) {
-                    LegendaryItem def = registry.getById("storm_shuriken");
-                    if (def != null) {
-                        targets.add(new TrackedTarget(def.id(), def.displayName(), projectile.getLocation(), null, "THROWN"));
-                    }
-                }
-            }
         }
 
         return targets;
@@ -210,12 +202,6 @@ public class LegendaryPlugin extends JavaPlugin {
                         dropped.setUnlimitedLifetime(true);
                     }
                     spawnBeaconBeam(dropped.getLocation(), id);
-                }
-            }
-            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
-                if (isShurikenProjectile(projectile)) {
-                    projectile.setGlowing(true);
-                    spawnBeaconBeam(projectile.getLocation(), "storm_shuriken");
                 }
             }
         }
@@ -322,7 +308,22 @@ public class LegendaryPlugin extends JavaPlugin {
         Particle.DustOptions beamCore = new Particle.DustOptions(beamColor, 2.5f);
 
         for (int y = startY; y <= maxY; y += 2) {
+            int heightAboveSource = y - startY;
             Location point = new Location(world, x, y, z);
+
+            if (heightAboveSource < 16) {
+                if (heightAboveSource % 8 != 0) {
+                    continue;
+                }
+                new ParticleBuilder(Particle.DUST)
+                        .location(point)
+                        .count(1)
+                        .offset(0.04, 0.06, 0.04)
+                        .data(new Particle.DustOptions(beamColor, 0.7f))
+                        .force(true)
+                        .spawn();
+                continue;
+            }
 
             new ParticleBuilder(Particle.END_ROD)
                     .location(point)
@@ -343,22 +344,54 @@ public class LegendaryPlugin extends JavaPlugin {
     }
 
     public Color getLegendaryColor(String legendaryId) {
-        if ("storm_shuriken".equals(legendaryId)) {
-            return Color.fromRGB(0x55FFFF);
-        }
-        return Color.fromRGB(255, 200, 40);
+        return switch (legendaryId) {
+            case "astral_sovereign" -> Color.fromRGB(0xFFD700);
+            case "mjolnir" -> Color.WHITE;
+            case "storm_shuriken" -> Color.fromRGB(0x55FFFF);
+            case "astral_excavator" -> Color.fromRGB(0x55FF55);
+            case "astral_helmet" -> Color.fromRGB(0x5599FF);
+            case "astral_chestplate" -> Color.fromRGB(0x008B8B);
+            case "astral_leggings" -> Color.fromRGB(0xCC66FF);
+            case "astral_boots" -> Color.fromRGB(0xFF66CC);
+            default -> Color.fromRGB(255, 200, 40);
+        };
     }
 
     private NamedTextColor getGlowTeamColor(String legendaryId) {
-        if ("storm_shuriken".equals(legendaryId)) {
-            return NamedTextColor.AQUA;
-        }
-        return NamedTextColor.GOLD;
+        return switch (legendaryId) {
+            case "astral_sovereign" -> NamedTextColor.GOLD;
+            case "mjolnir" -> NamedTextColor.WHITE;
+            case "storm_shuriken" -> NamedTextColor.AQUA;
+            case "astral_excavator" -> NamedTextColor.DARK_GREEN;
+            case "astral_helmet" -> NamedTextColor.BLUE;
+            case "astral_chestplate" -> NamedTextColor.DARK_AQUA;
+            case "astral_leggings" -> NamedTextColor.LIGHT_PURPLE;
+            case "astral_boots" -> NamedTextColor.GREEN;
+            default -> NamedTextColor.GOLD;
+        };
     }
 
     private String getGlowTeamName(NamedTextColor color) {
         if (color.equals(NamedTextColor.AQUA)) {
             return "legendary_cyan";
+        }
+        if (color.equals(NamedTextColor.WHITE)) {
+            return "legendary_white";
+        }
+        if (color.equals(NamedTextColor.DARK_GREEN)) {
+            return "legendary_green";
+        }
+        if (color.equals(NamedTextColor.BLUE)) {
+            return "legendary_blue";
+        }
+        if (color.equals(NamedTextColor.DARK_AQUA)) {
+            return "legendary_dark_aqua";
+        }
+        if (color.equals(NamedTextColor.LIGHT_PURPLE)) {
+            return "legendary_purple";
+        }
+        if (color.equals(NamedTextColor.GREEN)) {
+            return "legendary_lime";
         }
         return "legendary_gold";
     }
@@ -370,6 +403,21 @@ public class LegendaryPlugin extends JavaPlugin {
         if (color.equals(NamedTextColor.DARK_GREEN)) {
             return ChatColor.DARK_GREEN;
         }
+        if (color.equals(NamedTextColor.WHITE)) {
+            return ChatColor.WHITE;
+        }
+        if (color.equals(NamedTextColor.BLUE)) {
+            return ChatColor.BLUE;
+        }
+        if (color.equals(NamedTextColor.DARK_AQUA)) {
+            return ChatColor.DARK_AQUA;
+        }
+        if (color.equals(NamedTextColor.LIGHT_PURPLE)) {
+            return ChatColor.LIGHT_PURPLE;
+        }
+        if (color.equals(NamedTextColor.GREEN)) {
+            return ChatColor.GREEN;
+        }
         return ChatColor.GOLD;
     }
 
@@ -377,7 +425,12 @@ public class LegendaryPlugin extends JavaPlugin {
         Map<NamedTextColor, Set<String>> entriesByColor = new LinkedHashMap<>();
         entriesByColor.put(NamedTextColor.GOLD, new HashSet<>());
         entriesByColor.put(NamedTextColor.AQUA, new HashSet<>());
+        entriesByColor.put(NamedTextColor.WHITE, new HashSet<>());
         entriesByColor.put(NamedTextColor.DARK_GREEN, new HashSet<>());
+        entriesByColor.put(NamedTextColor.BLUE, new HashSet<>());
+        entriesByColor.put(NamedTextColor.DARK_AQUA, new HashSet<>());
+        entriesByColor.put(NamedTextColor.LIGHT_PURPLE, new HashSet<>());
+        entriesByColor.put(NamedTextColor.GREEN, new HashSet<>());
 
         for (Player player : Bukkit.getOnlinePlayers()) {
             String id = findLegendaryInInventory(player);
@@ -390,11 +443,6 @@ public class LegendaryPlugin extends JavaPlugin {
                 String id = getLegendaryId(dropped.getItemStack());
                 if (id != null) {
                     entriesByColor.get(getGlowTeamColor(id)).add(dropped.getScoreboardEntryName());
-                }
-            }
-            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
-                if (isShurikenProjectile(projectile)) {
-                    entriesByColor.get(NamedTextColor.AQUA).add(projectile.getScoreboardEntryName());
                 }
             }
         }

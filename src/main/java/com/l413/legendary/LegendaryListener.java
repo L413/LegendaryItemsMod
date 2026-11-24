@@ -57,11 +57,11 @@ public class LegendaryListener implements Listener {
     private static final long MJOLNIR_LIGHTNING_COOLDOWN_MILLIS = 15_000L;
     private static final long MJOLNIR_SKY_LIGHTNING_COOLDOWN_MILLIS = 90_000L;
     private static final long ASTRAL_WARD_COOLDOWN_MILLIS = 30_000L;
-    private static final long SHURIKEN_BURST_COOLDOWN_MILLIS = 12_000L;
     private static final long SHURIKEN_SPECIAL_COOLDOWN_MILLIS = 8_000L;
+    private static final int SHURIKEN_ITEM_COOLDOWN_TICKS = 20;
     private static final int SHURIKEN_BURST_SIZE = 3;
     private static final int SHURIKEN_SPECIAL_SIZE = 12;
-    private static final double SHURIKEN_DAMAGE = 4.0;
+    private static final double SHURIKEN_DAMAGE = 6.0;
     private final LegendaryPlugin plugin;
     private final Map<UUID, BlockFace> excavatorMiningFaces = new HashMap<>();
     private final Map<UUID, Long> mjolnirLightningCooldowns = new HashMap<>();
@@ -114,13 +114,13 @@ public class LegendaryListener implements Listener {
             event.setCancelled(true);
             activateAstralWard(player);
         } else if ("storm_shuriken".equals(itemId)) {
-            if (event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
+            event.setCancelled(true);
+            if (player.isSneaking()
+                    && event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
                     && event.getBlockFace() == BlockFace.UP) {
-                event.setCancelled(true);
                 activateShurikenSpecial(player);
-            } else if (event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_AIR) {
-                event.setCancelled(true);
+            } else {
                 activateShurikenBurst(player);
             }
         }
@@ -196,9 +196,10 @@ public class LegendaryListener implements Listener {
     }
 
     private void activateShurikenBurst(Player player) {
-        if (!tryUseAbility(player, "shuriken_burst", SHURIKEN_BURST_COOLDOWN_MILLIS)) {
+        if (player.hasCooldown(Material.SNOWBALL)) {
             return;
         }
+        player.setCooldown(Material.SNOWBALL, SHURIKEN_ITEM_COOLDOWN_TICKS);
 
         new BukkitRunnable() {
             private int shots;
@@ -259,6 +260,7 @@ public class LegendaryListener implements Listener {
         player.getWorld().spawnParticle(Particle.GUST, center, 4, 0.5, 0.4, 0.5, 0.0);
         player.getWorld().spawnParticle(Particle.CLOUD, center, 24, 0.7, 0.4, 0.7, 0.12);
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_BREEZE_WIND_BURST, 1.4f, 0.8f);
+        player.getWorld().playSound(player.getLocation(), Sound.ITEM_TRIDENT_THROW, 1.2f, 0.7f);
     }
 
     private boolean damageShuriken(Player player) {
@@ -281,14 +283,16 @@ public class LegendaryListener implements Listener {
     private void throwShuriken(Player player, Vector direction, double speed) {
         Snowball projectile = player.getWorld().spawn(player.getEyeLocation(), Snowball.class);
         projectile.setShooter(player);
-        projectile.setItem(new ItemStack(Material.SNOWBALL));
+        ItemStack thrownItem = player.getInventory().getItemInMainHand().clone();
+        thrownItem.setAmount(1);
+        projectile.setItem(thrownItem);
         projectile.getPersistentDataContainer().set(
                 plugin.getShurikenProjectileKey(),
                 PersistentDataType.BYTE,
                 (byte) 1
         );
         projectile.setVelocity(direction.clone().normalize().multiply(speed));
-        player.getWorld().spawnParticle(Particle.CRIT, projectile.getLocation(), 5, 0.08, 0.08, 0.08, 0.04);
+        player.getWorld().playSound(player.getLocation(), Sound.ITEM_TRIDENT_THROW, 0.65f, 1.6f);
     }
 
     private void launchPlayerNextTick(Player player, Vector velocity) {
@@ -500,6 +504,17 @@ public class LegendaryListener implements Listener {
             return;
         }
 
+        Location impact = projectile.getLocation();
+        projectile.getWorld().spawnParticle(
+                Particle.DUST,
+                impact,
+                14,
+                0.22,
+                0.22,
+                0.22,
+                new Particle.DustOptions(Color.fromRGB(0xFFD700), 1.2f)
+        );
+        projectile.getWorld().playSound(impact, Sound.ITEM_TRIDENT_HIT, 0.8f, 1.5f);
         Bukkit.getScheduler().runTask(plugin, () -> plugin.destroyLegendary("storm_shuriken", "broken"));
         if (!(event.getHitEntity() instanceof LivingEntity target)) {
             return;
@@ -512,15 +527,6 @@ public class LegendaryListener implements Listener {
         } else {
             target.damage(SHURIKEN_DAMAGE);
         }
-        target.getWorld().spawnParticle(
-                Particle.CRIT,
-                target.getLocation().add(0.0, 0.8, 0.0),
-                10,
-                0.25,
-                0.35,
-                0.25,
-                0.08
-        );
     }
 
     private void applyAstralHit(Player attacker, LivingEntity target) {
