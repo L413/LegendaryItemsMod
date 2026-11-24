@@ -7,8 +7,6 @@ import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Chunk;
@@ -19,13 +17,12 @@ import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Container;
-import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Snowball;
 import org.bukkit.entity.Trident;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Inventory;
@@ -39,9 +36,6 @@ import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
-import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.Transformation;
-import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,29 +54,19 @@ public class LegendaryPlugin extends JavaPlugin {
     private static final double PROXIMITY_RADIUS = 250.0;
 
     private NamespacedKey itemKey;
-    private NamespacedKey thrownTridentKey;
+    private NamespacedKey shurikenProjectileKey;
     private LegendaryRegistry registry;
     private final Map<UUID, BossBar> activeBossBars = new HashMap<>();
-    private final Map<UUID, TrackedStormPiercer> stormPiercerDisplays = new HashMap<>();
     private final Set<String> trackedGlowEntries = new HashSet<>();
     private final Map<String, Long> ownershipAnnouncementCooldowns = new HashMap<>();
 
     private record TrackedTarget(String id, String displayName, Location location, UUID holderUuid, String statusLabel) {}
 
-    private static final class TrackedStormPiercer {
-        private final ItemDisplay display;
-        private BukkitTask task;
-
-        private TrackedStormPiercer(ItemDisplay display) {
-            this.display = display;
-        }
-    }
-
     @Override
     public void onEnable() {
         saveDefaultConfig();
         this.itemKey = new NamespacedKey(this, "legendary_id");
-        this.thrownTridentKey = new NamespacedKey(this, "thrown_trident");
+        this.shurikenProjectileKey = new NamespacedKey(this, "shuriken_projectile");
         this.registry = new LegendaryRegistry(this);
 
         Bukkit.getPluginManager().registerEvents(new LegendaryListener(this), this);
@@ -167,163 +151,8 @@ public class LegendaryPlugin extends JavaPlugin {
     public void onDisable() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             removeBossBar(player);
-            for (World world : Bukkit.getWorlds()) {
-                for (Trident trident : world.getEntitiesByClass(Trident.class)) {
-                    if (isStormPiercer(trident)) {
-                        player.showEntity(this, trident);
-                    }
-                }
-            }
         }
         activeBossBars.clear();
-        for (Map.Entry<UUID, TrackedStormPiercer> entry : stormPiercerDisplays.entrySet()) {
-            Entity entity = Bukkit.getEntity(entry.getKey());
-            if (entity instanceof Trident trident && trident.isValid()) {
-                trident.setInvisible(false);
-            }
-            TrackedStormPiercer tracked = entry.getValue();
-            if (tracked.task != null) {
-                tracked.task.cancel();
-            }
-            if (tracked.display.isValid()) {
-                tracked.display.remove();
-            }
-        }
-        stormPiercerDisplays.clear();
-    }
-
-    public void onStormPiercerLaunched(Trident trident) {
-        if (!isStormPiercer(trident)) {
-            return;
-        }
-
-        LegendaryItem stormPiercer = registry.getById("storm_piercer");
-        if (stormPiercer == null) {
-            getLogger().warning("Cannot display thrown storm_piercer: item is not registered.");
-            return;
-        }
-        ItemDisplay display = trident.getWorld().spawn(trident.getLocation(), ItemDisplay.class, spawnedDisplay -> {
-            spawnedDisplay.setVisibleByDefault(true);
-            spawnedDisplay.setInvisible(false);
-            spawnedDisplay.setItemStack(stormPiercer.createItemStack(this));
-            spawnedDisplay.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-            spawnedDisplay.setBillboard(Display.Billboard.FIXED);
-            spawnedDisplay.setGlowing(true);
-            spawnedDisplay.setGlowColorOverride(Color.AQUA);
-            spawnedDisplay.setTeleportDuration(1);
-            spawnedDisplay.setInterpolationDelay(0);
-            spawnedDisplay.setInterpolationDuration(1);
-            spawnedDisplay.getPersistentDataContainer().set(
-                    thrownTridentKey,
-                    PersistentDataType.STRING,
-                    trident.getUniqueId().toString()
-            );
-        });
-        hideStormPiercer(trident);
-        showStormPiercerDisplay(display);
-        trident.setGlowing(true);
-        UUID tridentId = trident.getUniqueId();
-        TrackedStormPiercer tracked = new TrackedStormPiercer(display);
-        stormPiercerDisplays.put(tridentId, tracked);
-        updateStormPiercerDisplay(tridentId);
-        tracked.task = Bukkit.getScheduler().runTaskTimer(
-                this,
-                () -> updateStormPiercerDisplay(tridentId),
-                0L,
-                1L
-        );
-    }
-
-    public void hideStormPiercer(Trident trident) {
-        if (!isStormPiercer(trident)) {
-            return;
-        }
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.hideEntity(this, trident);
-        }
-    }
-
-    public void hideStormPiercersFor(Player player) {
-        for (World world : Bukkit.getWorlds()) {
-            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
-                if (isStormPiercer(trident)) {
-                    player.hideEntity(this, trident);
-                }
-            }
-        }
-        for (TrackedStormPiercer tracked : stormPiercerDisplays.values()) {
-            if (tracked.display.isValid()) {
-                player.showEntity(this, tracked.display);
-            }
-        }
-    }
-
-    private void showStormPiercerDisplay(ItemDisplay display) {
-        display.setInvisible(false);
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.showEntity(this, display);
-        }
-    }
-
-    public void removeStormPiercerDisplay(UUID tridentId) {
-        TrackedStormPiercer tracked = stormPiercerDisplays.remove(tridentId);
-        removeStormPiercerDisplay(tracked);
-    }
-
-    private void updateStormPiercerDisplay(UUID tridentId) {
-        TrackedStormPiercer tracked = stormPiercerDisplays.get(tridentId);
-        if (tracked == null) {
-            return;
-        }
-
-        Entity entity = Bukkit.getEntity(tridentId);
-        if (!(entity instanceof Trident trident) || !trident.isValid() || trident.isDead()) {
-            removeStormPiercerDisplay(tridentId);
-            return;
-        }
-
-        ItemDisplay display = tracked.display;
-        if (!display.isValid()) {
-            removeStormPiercerDisplay(tridentId);
-            return;
-        }
-        showStormPiercerDisplay(display);
-
-        if (!trident.isInBlock()) {
-            Vector direction = trident.getLocation().getDirection().normalize();
-            Vector3f dir = new Vector3f(
-                    (float) direction.getX(),
-                    (float) direction.getY(),
-                    (float) direction.getZ()
-            ).normalize();
-            Quaternionf rotation = new Quaternionf().rotationTo(new Vector3f(0, 1, 0), dir);
-            display.setTransformation(new Transformation(
-                    new Vector3f(0, 0, 0),
-                    rotation,
-                    new Vector3f(1, 1, 1),
-                    new Quaternionf()
-            ));
-            display.setInterpolationDelay(0);
-            display.setInterpolationDuration(1);
-        }
-
-        Location displayLocation = trident.getLocation();
-        displayLocation.setYaw(0.0f);
-        displayLocation.setPitch(0.0f);
-        display.setTeleportDuration(1);
-        display.teleport(displayLocation);
-    }
-
-    private void removeStormPiercerDisplay(TrackedStormPiercer tracked) {
-        if (tracked == null) {
-            return;
-        }
-        if (tracked.task != null) {
-            tracked.task.cancel();
-        }
-        if (tracked.display.isValid()) {
-            tracked.display.remove();
-        }
     }
 
     private List<TrackedTarget> scanActiveTargets() {
@@ -349,11 +178,12 @@ public class LegendaryPlugin extends JavaPlugin {
                     targets.add(new TrackedTarget(id, name, dropped.getLocation(), null, "DROPPED"));
                 }
             }
-            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
-                String id = getLegendaryId(trident.getItemStack());
-                LegendaryItem def = id == null ? null : registry.getById(id);
-                if (def != null && def.id().equals("storm_piercer")) {
-                    targets.add(new TrackedTarget(id, def.displayName(), trident.getLocation(), null, "THROWN"));
+            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
+                if (isShurikenProjectile(projectile)) {
+                    LegendaryItem def = registry.getById("storm_shuriken");
+                    if (def != null) {
+                        targets.add(new TrackedTarget(def.id(), def.displayName(), projectile.getLocation(), null, "THROWN"));
+                    }
                 }
             }
         }
@@ -382,10 +212,10 @@ public class LegendaryPlugin extends JavaPlugin {
                     spawnBeaconBeam(dropped.getLocation(), id);
                 }
             }
-            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
-                if (isStormPiercer(trident)) {
-                    trident.setGlowing(true);
-                    spawnBeaconBeam(trident.getLocation(), "storm_piercer");
+            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
+                if (isShurikenProjectile(projectile)) {
+                    projectile.setGlowing(true);
+                    spawnBeaconBeam(projectile.getLocation(), "storm_shuriken");
                 }
             }
         }
@@ -513,21 +343,15 @@ public class LegendaryPlugin extends JavaPlugin {
     }
 
     public Color getLegendaryColor(String legendaryId) {
-        if ("storm_piercer".equals(legendaryId)) {
+        if ("storm_shuriken".equals(legendaryId)) {
             return Color.fromRGB(0x55FFFF);
-        }
-        if ("void_cleaver".equals(legendaryId)) {
-            return Color.fromRGB(0x176B35);
         }
         return Color.fromRGB(255, 200, 40);
     }
 
     private NamedTextColor getGlowTeamColor(String legendaryId) {
-        if ("storm_piercer".equals(legendaryId)) {
+        if ("storm_shuriken".equals(legendaryId)) {
             return NamedTextColor.AQUA;
-        }
-        if ("void_cleaver".equals(legendaryId)) {
-            return NamedTextColor.DARK_GREEN;
         }
         return NamedTextColor.GOLD;
     }
@@ -535,9 +359,6 @@ public class LegendaryPlugin extends JavaPlugin {
     private String getGlowTeamName(NamedTextColor color) {
         if (color.equals(NamedTextColor.AQUA)) {
             return "legendary_cyan";
-        }
-        if (color.equals(NamedTextColor.DARK_GREEN)) {
-            return "legendary_green";
         }
         return "legendary_gold";
     }
@@ -571,15 +392,10 @@ public class LegendaryPlugin extends JavaPlugin {
                     entriesByColor.get(getGlowTeamColor(id)).add(dropped.getScoreboardEntryName());
                 }
             }
-            for (Trident trident : world.getEntitiesByClass(Trident.class)) {
-                if (isStormPiercer(trident)) {
-                    entriesByColor.get(NamedTextColor.AQUA).add(trident.getScoreboardEntryName());
+            for (Snowball projectile : world.getEntitiesByClass(Snowball.class)) {
+                if (isShurikenProjectile(projectile)) {
+                    entriesByColor.get(NamedTextColor.AQUA).add(projectile.getScoreboardEntryName());
                 }
-            }
-        }
-        for (TrackedStormPiercer tracked : stormPiercerDisplays.values()) {
-            if (tracked.display.isValid()) {
-                entriesByColor.get(NamedTextColor.AQUA).add(tracked.display.getScoreboardEntryName());
             }
         }
 
@@ -677,9 +493,11 @@ public class LegendaryPlugin extends JavaPlugin {
                         String id = getLegendaryId(trident.getItemStack());
                         if (id != null) {
                             destroyedIds.add(id);
-                            removeStormPiercerDisplay(trident.getUniqueId());
                             trident.remove();
                         }
+                    } else if (entity instanceof Snowball projectile && isShurikenProjectile(projectile)) {
+                        destroyedIds.add("storm_shuriken");
+                        projectile.remove();
                     } else if (entity instanceof ItemFrame itemFrame) {
                         String id = getLegendaryId(itemFrame.getItem());
                         if (id != null) {
@@ -768,13 +586,6 @@ public class LegendaryPlugin extends JavaPlugin {
                 player.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 45, 0, true, false, true));
                 player.addPotionEffect(new PotionEffect(PotionEffectType.NIGHT_VISION, 260, 0, true, false, true));
             }
-            case "void_cleaver" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 45, 0, true, false, true));
-            }
-            case "storm_piercer" -> {
-                player.addPotionEffect(new PotionEffect(PotionEffectType.WATER_BREATHING, 45, 0, true, false, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.DOLPHINS_GRACE, 45, 0, true, false, true));
-            }
             default -> {
             }
         }
@@ -829,14 +640,8 @@ public class LegendaryPlugin extends JavaPlugin {
         return getLegendaryId(player.getInventory().getItemInOffHand());
     }
 
-    private boolean isStormPiercer(Trident trident) {
-        String id = getLegendaryId(trident.getItemStack());
-        LegendaryItem item = id == null ? null : registry.getById(id);
-        return item != null && item.id().equals("storm_piercer");
-    }
-
-    public boolean isStormPiercerTrident(Trident trident) {
-        return isStormPiercer(trident);
+    private boolean isShurikenProjectile(Snowball projectile) {
+        return projectile.getPersistentDataContainer().has(shurikenProjectileKey, PersistentDataType.BYTE);
     }
 
     private String formatDimension(World.Environment env) {
@@ -943,6 +748,10 @@ public class LegendaryPlugin extends JavaPlugin {
                         && id.equals(getLegendaryId(trident.getItemStack()))) {
                     return true;
                 }
+                if (entity instanceof Snowball projectile && projectile.isValid()
+                        && "storm_shuriken".equals(id) && isShurikenProjectile(projectile)) {
+                    return true;
+                }
                 if (entity instanceof ItemFrame itemFrame
                         && id.equals(getLegendaryId(itemFrame.getItem()))) {
                     return true;
@@ -987,6 +796,10 @@ public class LegendaryPlugin extends JavaPlugin {
 
     public NamespacedKey getItemKey() {
         return itemKey;
+    }
+
+    public NamespacedKey getShurikenProjectileKey() {
+        return shurikenProjectileKey;
     }
 
     public LegendaryRegistry getRegistry() {

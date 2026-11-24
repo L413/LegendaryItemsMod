@@ -53,7 +53,6 @@ public record LegendaryItem(
                 .decoration(TextDecoration.ITALIC, false)
                 .decoration(TextDecoration.BOLD, true));
         meta.lore(lore);
-        meta.setUnbreakable(true);
 
         meta.getPersistentDataContainer().set(plugin.getItemKey(), PersistentDataType.STRING, id);
 
@@ -70,11 +69,20 @@ public record LegendaryItem(
             meta.addAttributeModifier(Attribute.MAX_HEALTH,
                     new AttributeModifier(healthKey, maxHealthBonus, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.CHEST));
         }
-        if ("titan_pickaxe".equals(id)) {
+        if ("astral_excavator".equals(id)) {
             meta.addEnchant(Enchantment.EFFICIENCY, 5, true);
+        } else if ("mjolnir".equals(id)) {
+            meta.addEnchant(Enchantment.WIND_BURST, 1, true);
         }
 
         item.setItemMeta(meta);
+        int baseDurability = baseMaterial.getMaxDurability();
+        if (baseDurability <= 0) {
+            baseDurability = Material.NETHERITE_SWORD.getMaxDurability();
+        }
+        item.setData(DataComponentTypes.MAX_DAMAGE, (int) Math.ceil(baseDurability * 1.1));
+        item.setData(DataComponentTypes.DAMAGE, 0);
+        item.setData(DataComponentTypes.MAX_STACK_SIZE, 1);
 
         if (resourceModelKey != null && !resourceModelKey.isEmpty()) {
             NamespacedKey modelKey = NamespacedKey.fromString(resourceModelKey);
@@ -86,7 +94,6 @@ public record LegendaryItem(
         if (equipmentSlot != null) {
             NamespacedKey assetKey = NamespacedKey.fromString("legendary:astral");
             NamespacedKey modelKey = NamespacedKey.fromString("legendary:" + id);
-            item.setData(DataComponentTypes.UNBREAKABLE);
             if (modelKey != null) {
                 item.setData(DataComponentTypes.ITEM_MODEL, modelKey);
             }

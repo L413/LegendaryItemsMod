@@ -25,7 +25,7 @@ def get_existing_item_ids(dest_pack: Path) -> list[str]:
         for jf in items_dir.glob("*.json"):
             ids.add(jf.stem.lower())
     if not ids:
-        ids.update(["astral_sovereign", "void_cleaver", "storm_piercer"])
+        ids.update(["astral_sovereign", "mjolnir", "storm_shuriken"])
     return sorted(ids)
 
 

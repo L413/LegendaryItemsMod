@@ -36,6 +36,7 @@ public class LegendaryRegistry {
                         Component.text("Held: Speed I, Jump Boost I, Night Vision.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("On hit: Regeneration for 2 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("15% chance to deal 2 bonus damage with an astral burst.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click: Astral Ward grants Absorption for 6 seconds (30s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Projects a sky beacon and reveals your location.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
@@ -53,54 +54,57 @@ public class LegendaryRegistry {
         ));
 
         register(new LegendaryItem(
-                "void_cleaver",
-                "Void Cleaver",
-                Material.NETHERITE_AXE,
-                "legendary:void_cleaver",
+                "mjolnir",
+                "Mjolnir",
+                Material.MACE,
+                "legendary:mjolnir",
                 12.0,
-                1.0,
+                0.7,
                 List.of(
-                        Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Held: Resistance I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("On hit: Wither I (2s), Slowness (1.5s), and a void pull.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Heals you for 1.5 HP and releases Dragon's Breath.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("The one and only Storm God's weapon.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
+                        Component.text("A mighty mace forged from four Heavy Cores.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Wind Burst I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("On hit: calls real lightning down on your target.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click: calls harmless lightning from the sky (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Lightning strike ability has a 10-second cooldown.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
-                            "CSC",
-                            "EAE",
-                            "C C"
+                            "HNH",
+                            "AMA",
+                            "HNH"
                     );
-                    recipe.setIngredient('C', Material.CRYING_OBSIDIAN); // 4 Crying Obsidian
-                    recipe.setIngredient('S', Material.NETHER_STAR);     // 1 Nether Star
-                    recipe.setIngredient('E', Material.ECHO_SHARD);      // 2 Echo Shards
-                    recipe.setIngredient('A', Material.NETHERITE_AXE);   // 1 Netherite Axe
+                    recipe.setIngredient('H', Material.HEAVY_CORE);
+                    recipe.setIngredient('N', Material.NETHER_STAR);
+                    recipe.setIngredient('A', Material.ENCHANTED_GOLDEN_APPLE);
+                    recipe.setIngredient('M', Material.MACE);
                 }
         ));
 
         register(new LegendaryItem(
-                "storm_piercer",
-                "Storm Piercer",
-                Material.TRIDENT,
-                "legendary:storm_piercer",
-                9.0,
-                1.4,
+                "storm_shuriken",
+                "Storm Shuriken",
+                Material.SNOWBALL,
+                "legendary:storm_shuriken",
+                1.0,
+                1.0,
                 List.of(
                         Component.text("One of One.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Held: Water Breathing and Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Melee or thrown hit: lightning effect and 2 bonus damage.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Gain Slow Falling for 3s when airborne on hit.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Right-click air: throw a 3-shuriken burst (12s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Right-click the top of a block: throw 12 in every direction.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Radial burst launches nearby enemies with Wind Burst (8s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Each hit deals damage; has 10% more durability than Netherite.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
                             "PBP",
-                            "H R",
+                            "ESE",
                             "P P"
                     );
-                    recipe.setIngredient('P', Material.PRISMARINE_CRYSTALS); // 4 Prismarine Crystals
-                    recipe.setIngredient('B', Material.BREEZE_ROD);          // 1 Breeze Rod
-                    recipe.setIngredient('H', Material.HEAVY_CORE);          // 1 Heavy Core
-                    recipe.setIngredient('R', Material.TRIDENT);             // 1 Trident
+                    recipe.setIngredient('P', Material.PRISMARINE_CRYSTALS);
+                    recipe.setIngredient('B', Material.BREEZE_ROD);
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('S', Material.SNOWBALL);
                 }
         ));
 
@@ -146,7 +150,7 @@ public class LegendaryRegistry {
                 1.2,
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Instantly breaks blocks that can be mined.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
+                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
                     recipe.shape(
@@ -161,28 +165,6 @@ public class LegendaryRegistry {
                 }
         ));
 
-        register(new LegendaryItem(
-                "titan_pickaxe",
-                "Titan Pickaxe",
-                Material.NETHERITE_PICKAXE,
-                "legendary:titan_pickaxe",
-                7.0,
-                1.2,
-                List.of(
-                        Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)
-                ),
-                recipe -> {
-                    recipe.shape(
-                            "DID",
-                            " P ",
-                            "I I"
-                    );
-                    recipe.setIngredient('D', Material.DIAMOND_BLOCK);
-                    recipe.setIngredient('I', Material.IRON_BLOCK);
-                    recipe.setIngredient('P', Material.NETHERITE_PICKAXE);
-                }
-        ));
         register(new LegendaryItem(
                 "astral_leggings",
                 "Astral Greaves",
