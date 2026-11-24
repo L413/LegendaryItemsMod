@@ -441,7 +441,7 @@ public final class LifestealManager implements Listener {
                     player.getName(),
                     "You lost all Lifesteal hearts.",
                     expires,
-                    "Legends & Lifesteal"
+                    "Legends and Lifesteal"
             );
         }
         if ("ban".equals(action) || "kick".equals(action)) {

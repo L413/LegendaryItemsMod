@@ -109,7 +109,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         // Scoreboard refresh loop (every 40 ticks / 2s): updates rounded coordinates sidebar
         Bukkit.getScheduler().runTaskTimer(this, this::updateScoreboards, 20L, 40L);
 
-        getLogger().info("Legends & Lifesteal enabled with " + registry.getAll().size() + " legendary item(s).");
+        getLogger().info("Legends and Lifesteal enabled with " + registry.getAll().size() + " legendary item(s).");
     }
 
     @Override
@@ -213,7 +213,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                     case "reload" -> {
                         reloadPluginConfiguration();
                         source.getSender().sendMessage(Component.text(
-                                "Legends & Lifesteal configuration and recipes reloaded.",
+                                "Legends and Lifesteal configuration and recipes reloaded.",
                                 NamedTextColor.GREEN
                         ));
                     }

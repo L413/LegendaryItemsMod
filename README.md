@@ -1,4 +1,4 @@
-# Legends & Lifesteal
+# Legends and Lifesteal
 
 A Paper 26.3 plugin adding one-of-a-kind legendary weapons, Astral armor,
 custom tracking, and Lifesteal hearts. Install the plugin JAR on the server.
@@ -220,7 +220,7 @@ zero-based values; the Excavator Haste amplifier is a displayed level (100 is
 Haste C). Durations for potion effects are in ticks; ability durations and
 cooldowns are in seconds.
 
-Edit the server's `plugins/Legends & Lifesteal/config.yml`, then run
+Edit the server's `plugins/Legends and Lifesteal/config.yml`, then run
 `/legendary reload` as an operator (or restart the server). Missing settings
 are merged from defaults without replacing existing values. Recipe, ability,
 effect, enchantment, durability, and item-stat changes are applied to existing
