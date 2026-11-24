@@ -113,6 +113,9 @@ public class LegendaryListener implements Listener {
         } else if ("astral_sovereign".equals(itemId) && player.isSneaking()) {
             event.setCancelled(true);
             activateAstralWard(player);
+        } else if ("astral_excavator".equals(itemId) && player.isSneaking()) {
+            event.setCancelled(true);
+            activateExcavatorHaste(player);
         } else if ("storm_shuriken".equals(itemId)) {
             event.setCancelled(true);
             if (player.isSneaking()
@@ -231,6 +234,11 @@ public class LegendaryListener implements Listener {
         );
         player.getWorld().spawnParticle(Particle.END_ROD, effectLocation, 16, 0.5, 0.8, 0.5, 0.03);
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1.2f, 1.35f);
+    }
+
+    private void activateExcavatorHaste(Player player) {
+        player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, 200, 99, true, false, true));
+        player.getWorld().playSound(player.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1.0f, 1.8f);
     }
 
     private void activateShurikenBurst(Player player) {
@@ -433,7 +441,7 @@ public class LegendaryListener implements Listener {
                 && !player.isOnGround()
                 && player.getVelocity().getY() < -0.08
                 && "astral_boots".equals(plugin.getLegendaryId(player.getInventory().getBoots()))) {
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 40, 0, true, false, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOW_FALLING, 100, 0, true, false, true));
         }
     }
 

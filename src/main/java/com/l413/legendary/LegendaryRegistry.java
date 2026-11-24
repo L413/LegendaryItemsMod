@@ -62,7 +62,7 @@ public class LegendaryRegistry {
                 0.7,
                 List.of(
                         Component.text("The one and only Storm God's weapon.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
-                        Component.text("A mighty mace forged from four Heavy Cores. Wind Burst I.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
+                        Component.text("A mighty mace forged from four Heavy Cores. Wind Burst II.", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false),
                         Component.text("On hit: real lightning strikes your target, with four surrounding visual bolts (15s cooldown).", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Sneak + right-click air while looking up: a vertical launch surrounded by repeated spiraling sky lightning (90s cooldown).", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
@@ -118,7 +118,17 @@ public class LegendaryRegistry {
                         Component.text("While worn: Night Vision and Water Breathing.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
-                null,
+                recipe -> {
+                    recipe.shape(
+                            "ESE",
+                            "N H",
+                            " E "
+                    );
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('S', Material.NETHER_STAR);
+                    recipe.setIngredient('N', Material.NETHERITE_HELMET);
+                    recipe.setIngredient('H', Material.HEAVY_CORE);
+                },
                 EquipmentSlot.HEAD,
                 0.0
         ));
@@ -136,7 +146,17 @@ public class LegendaryRegistry {
                         Component.text("+2 maximum health.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
-                null,
+                recipe -> {
+                    recipe.shape(
+                            "EHE",
+                            "NSN",
+                            "E E"
+                    );
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('H', Material.HEAVY_CORE);
+                    recipe.setIngredient('N', Material.NETHER_STAR);
+                    recipe.setIngredient('S', Material.NETHERITE_CHESTPLATE);
+                },
                 EquipmentSlot.CHEST,
                 2.0
         ));
@@ -151,6 +171,7 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Only ONE exists on the server.", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false),
                         Component.text("Efficiency V; mines a 3x3 plane matching the face hit.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak + right-click: Haste C for 10 seconds.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("Durability: 9x a Netherite pickaxe.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
                 recipe -> {
@@ -178,7 +199,16 @@ public class LegendaryRegistry {
                         Component.text("While worn: Speed I and Jump Boost I.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
-                null,
+                recipe -> {
+                    recipe.shape(
+                            "ENE",
+                            "ELE",
+                            "N N"
+                    );
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('N', Material.NETHER_STAR);
+                    recipe.setIngredient('L', Material.NETHERITE_LEGGINGS);
+                },
                 EquipmentSlot.LEGS,
                 0.0
         ));
@@ -193,10 +223,19 @@ public class LegendaryRegistry {
                 List.of(
                         Component.text("Astral armor set piece.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                         Component.text("While worn: Dolphin's Grace.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
-                        Component.text("Sneak while falling to gain Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
+                        Component.text("Sneak while falling to gain extended Slow Falling.", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false),
                         Component.text("Full set: Regeneration and Fire Resistance.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
                 ),
-                null,
+                recipe -> {
+                    recipe.shape(
+                            "E E",
+                            "NBN",
+                            "E E"
+                    );
+                    recipe.setIngredient('E', Material.ECHO_SHARD);
+                    recipe.setIngredient('N', Material.NETHER_STAR);
+                    recipe.setIngredient('B', Material.NETHERITE_BOOTS);
+                },
                 EquipmentSlot.FEET,
                 0.0
         ));

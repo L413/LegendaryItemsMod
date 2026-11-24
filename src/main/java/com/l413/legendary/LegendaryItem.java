@@ -60,7 +60,7 @@ public record LegendaryItem(
         } else {
             String enchantmentLore = id.equals("astral_excavator")
                     ? "Efficiency V"
-                    : "Wind Burst I";
+                    : "Wind Burst II";
             itemLore.add(Component.text("Fixed enchantment(s): " + enchantmentLore + ". No other enchants allowed.", NamedTextColor.GRAY)
                     .decoration(TextDecoration.ITALIC, false));
         }
@@ -124,7 +124,7 @@ public record LegendaryItem(
     public Map<Enchantment, Integer> requiredEnchantments() {
         return switch (id) {
             case "astral_excavator" -> Map.of(Enchantment.EFFICIENCY, 5);
-            case "mjolnir" -> Map.of(Enchantment.WIND_BURST, 1);
+            case "mjolnir" -> Map.of(Enchantment.WIND_BURST, 2);
             default -> Map.of();
         };
     }
