@@ -1,5 +1,5 @@
-name: "LegendsandLifesteal"
-version: 2.3.1
+name: "LegendsAndLifesteal"
+version: 2.3.3
 main: com.l413.legendary.LegendaryPlugin
 api-version: '26.3'
 authors: [l413]
