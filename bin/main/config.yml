@@ -2,7 +2,7 @@ crafted:
   astral_sovereign: false
 
 legendary:
-  logout-behavior: beacon
+  logout-behavior: drop
   tracker-coordinate-rounding: 250
   overload-rule: armor_tool
   offline-beacons: {}
@@ -10,10 +10,10 @@ legendary:
 lifesteal:
   # Counts are health points/half-hearts: 20 = normal, 40 = double normal.
   heart-units-version: 2
-  min-hearts: 0
+  min-hearts: 1
   max-hearts: 40
   starting-hearts: 20
-  zero-hearts-action: ban
+  zero-hearts-action: none
   zero-hearts-ban-seconds: 86400
   players: {}
 
@@ -40,28 +40,32 @@ recipes:
       B: BREEZE_ROD
   storm_shuriken:
     enabled: true
-    shape: ["PBP", "ESE", "P P"]
+    shape: ["PBP", "ESE", "PNP"]
     ingredients:
       P: PRISMARINE_CRYSTALS
       B: BREEZE_ROD
       E: ECHO_SHARD
       S: SNOWBALL
+      N: NETHER_STAR
   astral_helmet:
     enabled: true
-    shape: ["ESE", "N H", " E "]
+    shape: ["ETE", "DND", "DSD"]
     ingredients:
       E: ECHO_SHARD
       S: NETHER_STAR
       N: NETHERITE_HELMET
       H: HEAVY_CORE
+      D: DIAMOND_BLOCK
+      T: TURTLE_SHELL
   astral_chestplate:
     enabled: true
-    shape: ["EHE", "NSN", "E E"]
+    shape: ["EHE", "NSN", "EDE"]
     ingredients:
       E: ECHO_SHARD
       H: HEAVY_CORE
       N: NETHER_STAR
       S: NETHERITE_CHESTPLATE
+      D: DIAMOND_BLOCK
   astral_excavator:
     enabled: true
     shape: ["GNG", "EPE", "G G"]
@@ -79,11 +83,12 @@ recipes:
       L: NETHERITE_LEGGINGS
   astral_boots:
     enabled: true
-    shape: ["E E", "NBN", "E E"]
+    shape: ["EFE", "NBN", "EFE"]
     ingredients:
       E: ECHO_SHARD
       N: NETHER_STAR
       B: NETHERITE_BOOTS
+      F: FEATHER
   heart_of_life:
     enabled: true
     shape: ["ESE", "DHD", "ESE"]
@@ -97,7 +102,7 @@ item-stats:
   durability-multipliers:
     default: 1.1
     astral_excavator: 9.0
-  heart-repair-fraction: 0.33
+  heart-repair-fraction: 1
   items:
     astral_sovereign:
       attack-damage: 10.0
@@ -164,12 +169,12 @@ abilities:
       combat-tag-seconds: 5
   storm_shuriken:
     burst:
-      cooldown-seconds: 2.5
+      cooldown-seconds: 0.8
       projectile-count: 3
-    projectile-damage: 6.0
+    projectile-damage: 8
     radial:
-      cooldown-seconds: 8
-      projectile-count: 12
+      cooldown-seconds: 30
+      projectile-count: 20
       radius: 6.0
       horizontal-knockback: 1.6
       vertical-knockback: 0.75
@@ -177,6 +182,6 @@ abilities:
   astral_excavator:
     area-mining-enabled: true
     haste:
-      amplifier: 100
+      amplifier: 8
       duration-seconds: 10
       cooldown-seconds: 60

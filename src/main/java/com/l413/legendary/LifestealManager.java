@@ -217,12 +217,13 @@ public final class LifestealManager implements Listener {
         if (killer != null && !killer.equals(victim)) {
             int previousHearts = getHeartCount(victim);
             int newHearts = Math.max(getMinHearts(), previousHearts - 1);
+            boolean lostHeart = newHearts < previousHearts;
             boolean reachedZero = previousHearts > getMinHearts() && newHearts == 0;
-            if (newHearts != previousHearts) {
+            if (lostHeart) {
                 setHeartCount(victim, newHearts);
                 Bukkit.broadcast(Component.text(victim.getName() + " lost half a heart. (" + newHearts + " half-hearts remaining)", NamedTextColor.RED));
+                giveHeart(killer);
             }
-            giveHeart(killer);
             if (reachedZero) {
                 punishAtZeroHearts(victim);
             }
