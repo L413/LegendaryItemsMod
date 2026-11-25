@@ -1,4 +1,4 @@
-name: "Legends and Lifesteal"
+name: "LegendsandLifesteal"
 version: ${version}
 main: com.l413.legendary.LegendaryPlugin
 api-version: '26.3'
