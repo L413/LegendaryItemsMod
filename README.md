@@ -44,14 +44,17 @@ durability.
 
 ## Commands
 
-All commands below are operator-only. Settings menus require an operator and
-an in-game player. `/legendary destroyall` can also be run from console.
+All commands below are operator-only except `/extract`, which is available to
+players when `lifesteal.extract-enabled` is true. Settings menus require an
+operator and an in-game player. `/legendary destroyall` can also be run from
+console.
 
 | Command | Description |
 |---|---|
 | `/lifesteal` or `/lifesteal settings` | Open Lifesteal settings. |
 | `/lifesteal give` | Give yourself a Heart of Life. The alias `/lifesteal giveheart` is also accepted. |
 | `/lifesteal set <player> <half-hearts\|reset>` | Set an online or previously seen player's maximum health in half-heart units, or reset it to the configured starting value. `/lifesteal sethearts` is also accepted. |
+| `/extract <half-hearts>` | Trade the specified number of half-hearts for the same number of Hearts of Life. You must retain at least one half-heart or the configured minimum, whichever is higher. |
 | `/legendary settings` | Open settings for carry rule, logout behavior, and tracker coordinate rounding. |
 | `/legendary give <item_id>` | Claim and give yourself an unclaimed legendary item. |
 | `/legendary destroyall` | Remove all legendary items and release their one-of-one claims. |
@@ -60,6 +63,10 @@ an in-game player. `/legendary destroyall` can also be run from console.
 Item IDs accepted by `/legendary give`:
 `astral_sovereign`, `mjolnir`, `storm_shuriken`, `astral_helmet`,
 `astral_chestplate`, `astral_excavator`, `astral_leggings`, and `astral_boots`.
+
+Set `lifesteal.extract-enabled: true` in `config.yml` to allow player heart
+extraction; set it to `false` to disable `/extract`. Apply the change with
+`/legendary reload`.
 
 ## Crafting recipes
 

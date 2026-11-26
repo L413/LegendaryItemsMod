@@ -180,6 +180,30 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             }
         });
 
+        this.registerCommand("extract", new BasicCommand() {
+            @Override
+            public void execute(CommandSourceStack source, String[] args) {
+                if (!(source.getSender() instanceof Player player)) {
+                    source.getSender().sendMessage(Component.text("Only players can extract hearts.", NamedTextColor.RED));
+                    return;
+                }
+                if (args.length != 1) {
+                    player.sendMessage(Component.text("Usage: /extract <half-hearts>", NamedTextColor.RED));
+                    return;
+                }
+                try {
+                    lifestealManager.extractHearts(player, Integer.parseInt(args[0]));
+                } catch (NumberFormatException exception) {
+                    player.sendMessage(Component.text("Enter a positive whole number of half-hearts.", NamedTextColor.RED));
+                }
+            }
+
+            @Override
+            public Collection<String> suggest(CommandSourceStack source, String[] args) {
+                return args.length <= 1 ? List.of("1", "2", "4") : List.of();
+            }
+        });
+
         this.registerCommand("legendary", new BasicCommand() {
             @Override
             public void execute(CommandSourceStack source, String[] args) {

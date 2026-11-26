@@ -13,6 +13,8 @@ lifesteal:
   min-hearts: 0
   max-hearts: 40
   starting-hearts: 20
+  # Allows players to trade permanent half-hearts for Heart of Life items with /extract.
+  extract-enabled: false
   zero-hearts-action: ban
   zero-hearts-ban-seconds: 86400
   players: {}

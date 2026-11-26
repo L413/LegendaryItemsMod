@@ -54,6 +54,7 @@ public final class LifestealManager implements Listener {
         plugin.getConfig().addDefault(CONFIG_ROOT + "min-hearts", 0);
         plugin.getConfig().addDefault(CONFIG_ROOT + "max-hearts", 40);
         plugin.getConfig().addDefault(CONFIG_ROOT + "starting-hearts", DEFAULT_STARTING_HEARTS);
+        plugin.getConfig().addDefault(CONFIG_ROOT + "extract-enabled", false);
         plugin.getConfig().addDefault(CONFIG_ROOT + "zero-hearts-action", "ban");
         plugin.getConfig().addDefault(CONFIG_ROOT + "zero-hearts-ban-seconds", 86400);
         plugin.getConfig().addDefault(CONFIG_ROOT + "players", null);
@@ -108,6 +109,42 @@ public final class LifestealManager implements Listener {
         Map<Integer, ItemStack> overflow = player.getInventory().addItem(createHeartItem());
         overflow.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
         player.sendMessage(Component.text("You received a Heart of Life.", NamedTextColor.GREEN));
+    }
+
+    public boolean extractHearts(Player player, int amount) {
+        if (!plugin.getConfig().getBoolean(CONFIG_ROOT + "extract-enabled", false)) {
+            player.sendMessage(Component.text("Heart extraction is currently disabled.", NamedTextColor.RED));
+            return false;
+        }
+        if (amount <= 0) {
+            player.sendMessage(Component.text("Enter a positive number of half-hearts to extract.", NamedTextColor.RED));
+            return false;
+        }
+
+        int hearts = getHeartCount(player);
+        int minimum = Math.max(1, getMinHearts());
+        if (amount > hearts - minimum) {
+            player.sendMessage(Component.text(
+                    "You must keep at least " + minimum + " half-heart(s). You can extract at most "
+                            + Math.max(0, hearts - minimum) + ".",
+                    NamedTextColor.RED
+            ));
+            return false;
+        }
+
+        setHeartCount(player, hearts - amount);
+        Map<Integer, ItemStack> overflow = player.getInventory().addItem(
+                java.util.stream.IntStream.range(0, amount)
+                        .mapToObj(ignored -> createHeartItem())
+                        .toArray(ItemStack[]::new)
+        );
+        overflow.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
+        player.sendMessage(Component.text(
+                "Extracted " + amount + " half-heart(s) into " + amount
+                        + " Heart(s) of Life. You now have " + (hearts - amount) + " half-heart(s).",
+                NamedTextColor.GREEN
+        ));
+        return true;
     }
 
     public void setHeartCount(OfflinePlayer target, int hearts) {

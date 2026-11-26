@@ -2,7 +2,7 @@ crafted:
   astral_sovereign: false
 
 legendary:
-  logout-behavior: drop
+  logout-behavior: beacon
   tracker-coordinate-rounding: 250
   overload-rule: armor_tool
   offline-beacons: {}
@@ -10,10 +10,12 @@ legendary:
 lifesteal:
   # Counts are health points/half-hearts: 20 = normal, 40 = double normal.
   heart-units-version: 2
-  min-hearts: 1
+  min-hearts: 0
   max-hearts: 40
   starting-hearts: 20
-  zero-hearts-action: none
+  # Allows players to trade permanent half-hearts for Heart of Life items with /extract.
+  extract-enabled: false
+  zero-hearts-action: ban
   zero-hearts-ban-seconds: 86400
   players: {}
 
@@ -40,32 +42,28 @@ recipes:
       B: BREEZE_ROD
   storm_shuriken:
     enabled: true
-    shape: ["PBP", "ESE", "PNP"]
+    shape: ["PBP", "ESE", "P P"]
     ingredients:
       P: PRISMARINE_CRYSTALS
       B: BREEZE_ROD
       E: ECHO_SHARD
       S: SNOWBALL
-      N: NETHER_STAR
   astral_helmet:
     enabled: true
-    shape: ["ETE", "DND", "DSD"]
+    shape: ["ESE", "N H", " E "]
     ingredients:
       E: ECHO_SHARD
       S: NETHER_STAR
       N: NETHERITE_HELMET
       H: HEAVY_CORE
-      D: DIAMOND_BLOCK
-      T: TURTLE_SHELL
   astral_chestplate:
     enabled: true
-    shape: ["EHE", "NSN", "EDE"]
+    shape: ["EHE", "NSN", "E E"]
     ingredients:
       E: ECHO_SHARD
       H: HEAVY_CORE
       N: NETHER_STAR
       S: NETHERITE_CHESTPLATE
-      D: DIAMOND_BLOCK
   astral_excavator:
     enabled: true
     shape: ["GNG", "EPE", "G G"]
@@ -83,12 +81,11 @@ recipes:
       L: NETHERITE_LEGGINGS
   astral_boots:
     enabled: true
-    shape: ["EFE", "NBN", "EFE"]
+    shape: ["E E", "NBN", "E E"]
     ingredients:
       E: ECHO_SHARD
       N: NETHER_STAR
       B: NETHERITE_BOOTS
-      F: FEATHER
   heart_of_life:
     enabled: true
     shape: ["ESE", "DHD", "ESE"]
@@ -102,7 +99,7 @@ item-stats:
   durability-multipliers:
     default: 1.1
     astral_excavator: 9.0
-  heart-repair-fraction: 1
+  heart-repair-fraction: 0.33
   items:
     astral_sovereign:
       attack-damage: 10.0
@@ -169,12 +166,12 @@ abilities:
       combat-tag-seconds: 5
   storm_shuriken:
     burst:
-      cooldown-seconds: 0.8
+      cooldown-seconds: 2.5
       projectile-count: 3
-    projectile-damage: 8
+    projectile-damage: 6.0
     radial:
-      cooldown-seconds: 30
-      projectile-count: 20
+      cooldown-seconds: 8
+      projectile-count: 12
       radius: 6.0
       horizontal-knockback: 1.6
       vertical-knockback: 0.75
@@ -182,6 +179,6 @@ abilities:
   astral_excavator:
     area-mining-enabled: true
     haste:
-      amplifier: 8
+      amplifier: 100
       duration-seconds: 10
       cooldown-seconds: 60
