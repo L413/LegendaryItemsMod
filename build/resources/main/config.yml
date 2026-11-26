@@ -8,13 +8,15 @@ legendary:
   offline-beacons: {}
 
 lifesteal:
-  # Counts are health points/half-hearts: 20 = normal, 40 = double normal.
-  heart-units-version: 2
+  # Counts are full hearts: 10 = normal, 20 = double normal.
+  heart-units-version: 3
   min-hearts: 0
   max-hearts: 40
   starting-hearts: 20
-  # Allows players to trade permanent half-hearts for Heart of Life items with /extract.
+  # Allows players to trade permanent hearts for Heart of Life items with /extract.
   extract-enabled: false
+  # Full hearts removed for each Heart of Life item extracted.
+  extract-cost-hearts: 1.0
   zero-hearts-action: ban
   zero-hearts-ban-seconds: 86400
   players: {}

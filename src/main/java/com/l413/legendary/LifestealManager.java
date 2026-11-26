@@ -41,9 +41,9 @@ import java.util.UUID;
 public final class LifestealManager implements Listener {
     private static final String CONFIG_ROOT = "lifesteal.";
     private static final String MENU_TITLE = "Lifesteal Settings";
-    private static final int HEART_UNITS_VERSION = 2;
-    private static final int DEFAULT_STARTING_HEARTS = 20;
-    private static final int MAX_CONFIGURED_HEARTS = 80;
+    private static final int HEART_UNITS_VERSION = 3;
+    private static final double DEFAULT_STARTING_HEARTS = 20.0;
+    private static final double MAX_CONFIGURED_HEARTS = 80.0;
     private final LegendaryPlugin plugin;
     private final NamespacedKey heartKey;
     private final Map<UUID, Inventory> openMenus = new HashMap<>();
@@ -55,10 +55,11 @@ public final class LifestealManager implements Listener {
         plugin.getConfig().addDefault(CONFIG_ROOT + "max-hearts", 40);
         plugin.getConfig().addDefault(CONFIG_ROOT + "starting-hearts", DEFAULT_STARTING_HEARTS);
         plugin.getConfig().addDefault(CONFIG_ROOT + "extract-enabled", false);
+        plugin.getConfig().addDefault(CONFIG_ROOT + "extract-cost-hearts", 1.0);
         plugin.getConfig().addDefault(CONFIG_ROOT + "zero-hearts-action", "ban");
         plugin.getConfig().addDefault(CONFIG_ROOT + "zero-hearts-ban-seconds", 86400);
         plugin.getConfig().addDefault(CONFIG_ROOT + "players", null);
-        migrateHeartCountsToHalfHearts();
+        migrateHeartCountsToFullHearts();
         plugin.getConfig().options().copyDefaults(true);
         plugin.saveConfig();
     }
@@ -86,7 +87,7 @@ public final class LifestealManager implements Listener {
         ItemMeta meta = heart.getItemMeta();
         meta.displayName(Component.text("Heart of Life", NamedTextColor.RED));
         meta.lore(java.util.List.of(
-                Component.text("Right-click to gain one permanent half-heart.", NamedTextColor.GRAY),
+                Component.text("Right-click to gain one permanent heart.", NamedTextColor.GRAY),
                 Component.text("Place in an anvil with damaged legendary gear to restore "
                         + Math.round(plugin.getConfig().getDouble("item-stats.heart-repair-fraction", 0.33) * 100.0)
                         + "% durability.", NamedTextColor.GOLD),
@@ -111,44 +112,54 @@ public final class LifestealManager implements Listener {
         player.sendMessage(Component.text("You received a Heart of Life.", NamedTextColor.GREEN));
     }
 
-    public boolean extractHearts(Player player, int amount) {
+    public boolean extractHearts(Player player, int itemCount) {
         if (!plugin.getConfig().getBoolean(CONFIG_ROOT + "extract-enabled", false)) {
             player.sendMessage(Component.text("Heart extraction is currently disabled.", NamedTextColor.RED));
             return false;
         }
-        if (amount <= 0) {
-            player.sendMessage(Component.text("Enter a positive number of half-hearts to extract.", NamedTextColor.RED));
+        if (itemCount <= 0) {
+            player.sendMessage(Component.text("Enter a positive number of Heart of Life items to extract.", NamedTextColor.RED));
             return false;
         }
 
-        int hearts = getHeartCount(player);
-        int minimum = Math.max(1, getMinHearts());
-        if (amount > hearts - minimum) {
+        double hearts = getHeartCount(player);
+        double minimum = Math.max(1.0, getMinHearts());
+        double costPerItem = getExtractCostHearts();
+        int maxItems = Math.min(
+                (int) MAX_CONFIGURED_HEARTS,
+                (int) Math.floor((hearts - minimum) / costPerItem + 1.0e-9)
+        );
+        if (itemCount > maxItems) {
             player.sendMessage(Component.text(
-                    "You must keep at least " + minimum + " half-heart(s). You can extract at most "
-                            + Math.max(0, hearts - minimum) + ".",
+                    "You must keep at least " + formatHeartCount(minimum) + " heart(s). You can extract at most "
+                            + Math.max(0, maxItems) + " item(s).",
                     NamedTextColor.RED
             ));
             return false;
         }
 
-        setHeartCount(player, hearts - amount);
+        double totalCost = itemCount * costPerItem;
+        double remainingHearts = hearts - totalCost;
+        setHeartCount(player, remainingHearts);
         Map<Integer, ItemStack> overflow = player.getInventory().addItem(
-                java.util.stream.IntStream.range(0, amount)
+                java.util.stream.IntStream.range(0, itemCount)
                         .mapToObj(ignored -> createHeartItem())
                         .toArray(ItemStack[]::new)
         );
         overflow.values().forEach(stack -> player.getWorld().dropItemNaturally(player.getLocation(), stack));
         player.sendMessage(Component.text(
-                "Extracted " + amount + " half-heart(s) into " + amount
-                        + " Heart(s) of Life. You now have " + (hearts - amount) + " half-heart(s).",
+                "Extracted " + formatHeartCount(totalCost) + " heart(s) into " + itemCount
+                        + " Heart(s) of Life. You now have " + formatHeartCount(remainingHearts) + " heart(s).",
                 NamedTextColor.GREEN
         ));
         return true;
     }
 
-    public void setHeartCount(OfflinePlayer target, int hearts) {
-        int bounded = Math.max(getMinHearts(), Math.min(getMaxHearts(), hearts));
+    public void setHeartCount(OfflinePlayer target, double hearts) {
+        if (!Double.isFinite(hearts)) {
+            return;
+        }
+        double bounded = Math.max(getMinHearts(), Math.min(getMaxHearts(), hearts));
         plugin.getConfig().set(CONFIG_ROOT + "players." + target.getUniqueId() + ".hearts", bounded);
         plugin.saveConfig();
         if (target.getPlayer() != null) {
@@ -196,7 +207,7 @@ public final class LifestealManager implements Listener {
 
     @EventHandler
     public void onPlayerRespawn(PlayerRespawnEvent event) {
-        int hearts = getHeartCount(event.getPlayer());
+        double hearts = getHeartCount(event.getPlayer());
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (event.getPlayer().isOnline()) {
                 applyHeartCount(event.getPlayer(), hearts);
@@ -230,20 +241,24 @@ public final class LifestealManager implements Listener {
         if (!isHeart(held)) {
             return false;
         }
-        int hearts = getHeartCount(player);
+        double hearts = getHeartCount(player);
         if (hearts >= getMaxHearts()) {
             player.sendActionBar(Component.text("You are already at the maximum heart limit.", NamedTextColor.YELLOW));
             return true;
         }
 
-        setHeartCount(player, hearts + 1);
+        setHeartCount(player, hearts + 1.0);
         var maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
         if (maxHealth != null) {
-            player.setHealth(Math.min(maxHealth.getValue(), player.getHealth() + 1.0));
+            player.setHealth(Math.min(maxHealth.getValue(), player.getHealth() + 2.0));
         }
         consumeHeldHeart(player, hand);
         playHeartUseEffects(player);
-        player.sendMessage(Component.text("You gained half a heart. (" + (hearts + 1) + "/" + getMaxHearts() + " half-hearts)", NamedTextColor.RED));
+        player.sendMessage(Component.text(
+                "You gained one heart. (" + formatHeartCount(hearts + 1.0) + "/"
+                        + formatHeartCount(getMaxHearts()) + " hearts)",
+                NamedTextColor.RED
+        ));
         return true;
     }
 
@@ -252,13 +267,20 @@ public final class LifestealManager implements Listener {
         Player victim = event.getEntity();
         Player killer = victim.getKiller();
         if (killer != null && !killer.equals(victim)) {
-            int previousHearts = getHeartCount(victim);
-            int newHearts = Math.max(getMinHearts(), previousHearts - 1);
-            boolean lostHeart = newHearts < previousHearts;
-            boolean reachedZero = previousHearts > getMinHearts() && newHearts == 0;
+            double previousHearts = getHeartCount(victim);
+            double newHearts = Math.max(getMinHearts(), previousHearts - 1.0);
+            double lostHearts = previousHearts - newHearts;
+            boolean lostHeart = lostHearts > 0.0;
+            boolean reachedZero = previousHearts > getMinHearts() && newHearts <= 0.0;
             if (lostHeart) {
                 setHeartCount(victim, newHearts);
-                Bukkit.broadcast(Component.text(victim.getName() + " lost half a heart. (" + newHearts + " half-hearts remaining)", NamedTextColor.RED));
+                Bukkit.broadcast(Component.text(
+                        victim.getName() + " lost " + formatHeartCount(lostHearts) + " heart(s). ("
+                                + formatHeartCount(newHearts) + " hearts remaining)",
+                        NamedTextColor.RED
+                ));
+            }
+            if (lostHearts >= 1.0) {
                 giveHeart(killer);
             }
             if (reachedZero) {
@@ -385,10 +407,10 @@ public final class LifestealManager implements Listener {
 
         int slot = event.getRawSlot();
         switch (slot) {
-            case 10 -> setMinHearts(Math.max(0, getMinHearts() - 1));
-            case 12 -> setMinHearts(Math.min(getMaxHearts(), getMinHearts() + 1));
-            case 14 -> setMaxHearts(Math.max(getMinHearts(), getMaxHearts() - 1));
-            case 16 -> setMaxHearts(Math.min(MAX_CONFIGURED_HEARTS, getMaxHearts() + 1));
+            case 10 -> setMinHearts(Math.max(0.0, getMinHearts() - 1.0));
+            case 12 -> setMinHearts(Math.min(getMaxHearts(), getMinHearts() + 1.0));
+            case 14 -> setMaxHearts(Math.max(getMinHearts(), getMaxHearts() - 1.0));
+            case 16 -> setMaxHearts(Math.min(MAX_CONFIGURED_HEARTS, getMaxHearts() + 1.0));
             case 20 -> cycleZeroHeartsAction();
             case 22 -> setBanSeconds(Math.max(60, getBanSeconds() - 3600));
             case 24 -> setBanSeconds(Math.min(2_592_000, getBanSeconds() + 3600));
@@ -409,11 +431,11 @@ public final class LifestealManager implements Listener {
 
     private void updateMenu(Inventory menu) {
         menu.clear();
-        menu.setItem(10, menuItem(Material.RED_DYE, "Minimum half-hearts: " + getMinHearts(), "Click to decrease"));
-        menu.setItem(11, menuItem(Material.PAPER, "Minimum: " + getMinHearts() + " half-hearts", "Loss occurs on player kills only"));
+        menu.setItem(10, menuItem(Material.RED_DYE, "Minimum hearts: " + formatHeartCount(getMinHearts()), "Click to decrease"));
+        menu.setItem(11, menuItem(Material.PAPER, "Minimum: " + formatHeartCount(getMinHearts()) + " hearts", "Loss occurs on player kills only"));
         menu.setItem(12, menuItem(Material.LIME_DYE, "Increase minimum", "Click to increase"));
         menu.setItem(14, menuItem(Material.RED_DYE, "Decrease maximum", "Click to decrease"));
-        menu.setItem(15, menuItem(Material.PAPER, "Maximum: " + getMaxHearts() + " half-hearts", "Default is double normal health"));
+        menu.setItem(15, menuItem(Material.PAPER, "Maximum: " + formatHeartCount(getMaxHearts()) + " hearts", "Default is four times normal health"));
         menu.setItem(16, menuItem(Material.LIME_DYE, "Increase maximum", "Click to increase"));
         menu.setItem(20, menuItem(Material.BARRIER, "Zero hearts: " + getZeroHeartsAction(), "Click to cycle ban, kick, none"));
         menu.setItem(22, menuItem(Material.CLOCK, "Shorter ban", "Decrease by one hour"));
@@ -430,16 +452,16 @@ public final class LifestealManager implements Listener {
         return item;
     }
 
-    private void setMinHearts(int hearts) {
+    private void setMinHearts(double hearts) {
         plugin.getConfig().set(CONFIG_ROOT + "min-hearts", hearts);
-        if (hearts > plugin.getConfig().getInt(CONFIG_ROOT + "max-hearts", 40)) {
+        if (hearts > getMaxHearts()) {
             plugin.getConfig().set(CONFIG_ROOT + "max-hearts", hearts);
         }
         saveSettingsAndClampPlayers();
     }
 
-    private void setMaxHearts(int hearts) {
-        hearts = Math.max(1, Math.min(MAX_CONFIGURED_HEARTS, hearts));
+    private void setMaxHearts(double hearts) {
+        hearts = Math.max(1.0, Math.min(MAX_CONFIGURED_HEARTS, hearts));
         plugin.getConfig().set(CONFIG_ROOT + "max-hearts", hearts);
         if (hearts < getMinHearts()) {
             plugin.getConfig().set(CONFIG_ROOT + "min-hearts", hearts);
@@ -466,7 +488,7 @@ public final class LifestealManager implements Listener {
     private void saveSettingsAndClampPlayers() {
         plugin.saveConfig();
         for (Player online : Bukkit.getOnlinePlayers()) {
-            int hearts = getHeartCount(online);
+            double hearts = getHeartCount(online);
             setHeartCount(online, hearts);
         }
     }
@@ -491,54 +513,58 @@ public final class LifestealManager implements Listener {
         }
     }
 
-    private int getHeartCount(Player player) {
+    private double getHeartCount(Player player) {
         String path = CONFIG_ROOT + "players." + player.getUniqueId() + ".hearts";
-        int hearts = plugin.getConfig().getInt(path, getStartingHearts());
+        double hearts = plugin.getConfig().getDouble(path, getStartingHearts());
+        if (!Double.isFinite(hearts)) {
+            hearts = getStartingHearts();
+        }
         return Math.max(getMinHearts(), Math.min(getMaxHearts(), hearts));
     }
 
-    private int getStartingHearts() {
-        return Math.max(getMinHearts(), Math.min(
-                getMaxHearts(),
-                plugin.getConfig().getInt(CONFIG_ROOT + "starting-hearts", DEFAULT_STARTING_HEARTS)
-        ));
-    }
-
-    private void setHeartCount(Player player, int hearts) {
-        int bounded = Math.max(getMinHearts(), Math.min(getMaxHearts(), hearts));
+    private void setHeartCount(Player player, double hearts) {
+        if (!Double.isFinite(hearts)) {
+            plugin.getLogger().warning("Ignoring invalid Lifesteal heart count for " + player.getName() + ".");
+            return;
+        }
+        double bounded = Math.max(getMinHearts(), Math.min(getMaxHearts(), hearts));
         plugin.getConfig().set(CONFIG_ROOT + "players." + player.getUniqueId() + ".hearts", bounded);
         plugin.saveConfig();
         applyHeartCount(player, bounded);
     }
 
-    private void migrateHeartCountsToHalfHearts() {
-        if (plugin.getConfig().getInt(CONFIG_ROOT + "heart-units-version", 1) >= HEART_UNITS_VERSION) {
+    private void migrateHeartCountsToFullHearts() {
+        int version = plugin.getConfig().getInt(CONFIG_ROOT + "heart-units-version", 1);
+        if (version >= HEART_UNITS_VERSION) {
             return;
         }
-        for (String key : new String[]{"min-hearts", "max-hearts", "starting-hearts"}) {
-            String path = CONFIG_ROOT + key;
-            if (plugin.getConfig().contains(path, true)) {
-                plugin.getConfig().set(path, Math.min(MAX_CONFIGURED_HEARTS, plugin.getConfig().getInt(path) * 2));
-            }
-        }
-        var players = plugin.getConfig().getConfigurationSection(CONFIG_ROOT + "players");
-        if (players != null) {
-            for (String playerId : players.getKeys(false)) {
-                String path = CONFIG_ROOT + "players." + playerId + ".hearts";
+        // Version 1 and unversioned configs already store full hearts; version 2 stored half-hearts.
+        if (version == 2) {
+            for (String key : new String[]{"min-hearts", "max-hearts", "starting-hearts"}) {
+                String path = CONFIG_ROOT + key;
                 if (plugin.getConfig().contains(path, true)) {
-                    plugin.getConfig().set(path, Math.min(MAX_CONFIGURED_HEARTS, plugin.getConfig().getInt(path) * 2));
+                    plugin.getConfig().set(path, plugin.getConfig().getDouble(path) / 2.0);
+                }
+            }
+            var players = plugin.getConfig().getConfigurationSection(CONFIG_ROOT + "players");
+            if (players != null) {
+                for (String playerId : players.getKeys(false)) {
+                    String path = CONFIG_ROOT + "players." + playerId + ".hearts";
+                    if (plugin.getConfig().contains(path, true)) {
+                        plugin.getConfig().set(path, plugin.getConfig().getDouble(path) / 2.0);
+                    }
                 }
             }
         }
         plugin.getConfig().set(CONFIG_ROOT + "heart-units-version", HEART_UNITS_VERSION);
     }
 
-    private void applyHeartCount(Player player, int hearts) {
+    private void applyHeartCount(Player player, double hearts) {
         var maxHealth = player.getAttribute(Attribute.MAX_HEALTH);
         if (maxHealth == null) {
             return;
         }
-        maxHealth.setBaseValue(Math.max(1.0, hearts));
+        maxHealth.setBaseValue(Math.max(1.0, hearts * 2.0));
         if (player.getHealth() > maxHealth.getValue()) {
             player.setHealth(maxHealth.getValue());
         }
@@ -563,22 +589,56 @@ public final class LifestealManager implements Listener {
         );
         player.showTitle(net.kyori.adventure.title.Title.title(
                 Component.text("HEART INFUSED", NamedTextColor.RED),
-                Component.text("+ half a heart", NamedTextColor.GOLD)
+                Component.text("+ one heart", NamedTextColor.GOLD)
         ));
     }
 
-    private int getMinHearts() {
-        return Math.max(0, Math.min(
+    private double getMinHearts() {
+        double configured = plugin.getConfig().getDouble(CONFIG_ROOT + "min-hearts", 0.0);
+        if (!Double.isFinite(configured)) {
+            plugin.getLogger().warning("Invalid lifesteal.min-hearts; using 0.");
+            return 0.0;
+        }
+        return Math.max(0.0, Math.min(
                 MAX_CONFIGURED_HEARTS,
-                plugin.getConfig().getInt(CONFIG_ROOT + "min-hearts", 0)
+                configured
         ));
     }
 
-    private int getMaxHearts() {
-        return Math.max(1, Math.max(getMinHearts(), Math.min(
+    private double getMaxHearts() {
+        double configured = plugin.getConfig().getDouble(CONFIG_ROOT + "max-hearts", 40.0);
+        if (!Double.isFinite(configured)) {
+            plugin.getLogger().warning("Invalid lifesteal.max-hearts; using 40.");
+            configured = 40.0;
+        }
+        return Math.max(1.0, Math.max(getMinHearts(), Math.min(
                 MAX_CONFIGURED_HEARTS,
-                plugin.getConfig().getInt(CONFIG_ROOT + "max-hearts", 40)
+                configured
         )));
+    }
+
+    private double getExtractCostHearts() {
+        double cost = plugin.getConfig().getDouble(CONFIG_ROOT + "extract-cost-hearts", 1.0);
+        if (!Double.isFinite(cost) || cost < 0.01 || cost > MAX_CONFIGURED_HEARTS) {
+            plugin.getLogger().warning("Invalid lifesteal.extract-cost-hearts; using 1.0.");
+            return 1.0;
+        }
+        return cost;
+    }
+
+    private double getStartingHearts() {
+        double configured = plugin.getConfig().getDouble(CONFIG_ROOT + "starting-hearts", DEFAULT_STARTING_HEARTS);
+        if (!Double.isFinite(configured)) {
+            plugin.getLogger().warning("Invalid lifesteal.starting-hearts; using 20.");
+            configured = DEFAULT_STARTING_HEARTS;
+        }
+        return Math.max(getMinHearts(), Math.min(getMaxHearts(), configured));
+    }
+
+    public String formatHeartCount(double hearts) {
+        return hearts == Math.rint(hearts)
+                ? Long.toString((long) hearts)
+                : String.format(java.util.Locale.ROOT, "%.1f", hearts);
     }
 
     private String getZeroHeartsAction() {

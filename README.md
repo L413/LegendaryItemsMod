@@ -53,8 +53,8 @@ console.
 |---|---|
 | `/lifesteal` or `/lifesteal settings` | Open Lifesteal settings. |
 | `/lifesteal give` | Give yourself a Heart of Life. The alias `/lifesteal giveheart` is also accepted. |
-| `/lifesteal set <player> <half-hearts\|reset>` | Set an online or previously seen player's maximum health in half-heart units, or reset it to the configured starting value. `/lifesteal sethearts` is also accepted. |
-| `/extract <half-hearts>` | Trade the specified number of half-hearts for the same number of Hearts of Life. You must retain at least one half-heart or the configured minimum, whichever is higher. |
+| `/lifesteal set <player> <hearts\|reset>` | Set an online or previously seen player's maximum health in full hearts, or reset it to the configured starting value. `/lifesteal sethearts` is also accepted. |
+| `/extract <items>` | Extract the specified number of Heart of Life items. Each item costs `lifesteal.extract-cost-hearts` full hearts. You must retain at least one full heart or the configured minimum, whichever is higher. |
 | `/legendary settings` | Open settings for carry rule, logout behavior, and tracker coordinate rounding. |
 | `/legendary give <item_id>` | Claim and give yourself an unclaimed legendary item. |
 | `/legendary destroyall` | Remove all legendary items and release their one-of-one claims. |
@@ -66,7 +66,8 @@ Item IDs accepted by `/legendary give`:
 
 Set `lifesteal.extract-enabled: true` in `config.yml` to allow player heart
 extraction; set it to `false` to disable `/extract`. Apply the change with
-`/legendary reload`.
+`/legendary reload`. Set `lifesteal.extract-cost-hearts` to configure the
+number of full hearts charged for each extracted item.
 
 ## Crafting recipes
 
@@ -190,10 +191,12 @@ E | S | E
 `E` Echo Shard ×4 · `S` Nether Star ×2 · `D` Diamond Block ×2 ·
 `H` Heart of the Sea ×1
 
-A Heart of Life grants one permanent half-heart (one health point) up to the
-configured maximum. Only player kills cause Lifesteal heart loss/gain. Default
-starting health is 20 half-heart units (10 full hearts); the default maximum is
-40 units (20 full hearts).
+A Heart of Life grants one permanent full heart (two health points) up to the
+configured maximum. Only player kills cause Lifesteal heart loss/gain. Heart
+limits, starting amounts, player balances, and extraction costs are configured
+in full hearts. Existing half-heart-unit data is migrated to full hearts on
+startup, preserving half-heart values where necessary. Defaults are 20 starting
+hearts (twice vanilla health) and a 40-heart maximum (four times vanilla).
 
 ## Item abilities
 

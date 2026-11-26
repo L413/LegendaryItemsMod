@@ -188,13 +188,13 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                     return;
                 }
                 if (args.length != 1) {
-                    player.sendMessage(Component.text("Usage: /extract <half-hearts>", NamedTextColor.RED));
+                    player.sendMessage(Component.text("Usage: /extract <items>", NamedTextColor.RED));
                     return;
                 }
                 try {
                     lifestealManager.extractHearts(player, Integer.parseInt(args[0]));
                 } catch (NumberFormatException exception) {
-                    player.sendMessage(Component.text("Enter a positive whole number of half-hearts.", NamedTextColor.RED));
+                    player.sendMessage(Component.text("Enter a positive whole number of items.", NamedTextColor.RED));
                 }
             }
 
@@ -266,6 +266,11 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             YamlConfiguration defaults = YamlConfiguration.loadConfiguration(
                     new InputStreamReader(resource, StandardCharsets.UTF_8)
             );
+            String heartUnitsVersionPath = "lifesteal.heart-units-version";
+            if (!getConfig().contains(heartUnitsVersionPath, true)) {
+                // Unversioned configurations used full-heart values.
+                getConfig().set(heartUnitsVersionPath, 1);
+            }
             getConfig().setDefaults(defaults);
             getConfig().options().copyDefaults(true);
             saveConfig();
@@ -399,7 +404,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     private void setHeartsCommand(CommandSourceStack source, String[] args) {
         if (args.length != 3) {
             source.getSender().sendMessage(Component.text(
-                    "Usage: /lifesteal set <player> <half-hearts|reset>",
+                    "Usage: /lifesteal set <player> <hearts|reset>",
                     NamedTextColor.RED
             ));
             return;
@@ -427,18 +432,18 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
 
         try {
-            int halfHearts = Integer.parseInt(args[2]);
-            if (halfHearts < 0) {
+            double hearts = Double.parseDouble(args[2]);
+            if (!Double.isFinite(hearts) || hearts < 0.0) {
                 throw new NumberFormatException();
             }
-            lifestealManager.setHeartCount(target, halfHearts);
+            lifestealManager.setHeartCount(target, hearts);
             source.getSender().sendMessage(Component.text(
-                    "Set " + args[1] + "'s heart count to " + halfHearts + " half-hearts.",
+                    "Set " + args[1] + "'s heart count to " + lifestealManager.formatHeartCount(hearts) + " hearts.",
                     NamedTextColor.GREEN
             ));
         } catch (NumberFormatException exception) {
             source.getSender().sendMessage(Component.text(
-                    "Heart count must be a non-negative whole number of half-hearts or 'reset'.",
+                    "Heart count must be a non-negative number of hearts or 'reset'.",
                     NamedTextColor.RED
             ));
         }
