@@ -51,6 +51,7 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
     private final Map<String, Chunk> chunksByKey = new HashMap<>();
     private final Map<String, Set<String>> chunkTicketOwners = new HashMap<>();
     private final Map<UUID, Warmup> warmups = new HashMap<>();
+    private final Set<String> missingWorldWarnings = new HashSet<>();
     private boolean dirty;
     private BukkitTask saveTask;
 
@@ -59,11 +60,13 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
             String playerName,
             String legendaryId,
             String itemBytes,
-            Location stashLocation,
-            Location logoutLocation,
+            StoredLocation stashLocation,
+            StoredLocation logoutLocation,
             long stashedAt,
             long expiresAt
     ) {}
+
+    private record StoredLocation(String worldName, double x, double y, double z) {}
 
     private static final class HoldState {
         private UUID holderId;
@@ -150,7 +153,7 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
                     stash.legendaryId(),
                     stash.itemBytes(),
                     stash.stashLocation(),
-                    event.getPlayer().getLocation().clone(),
+                    storeLocation(event.getPlayer().getLocation()),
                     stash.stashedAt(),
                     stash.expiresAt()
             ));
@@ -382,7 +385,7 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
                     + formatRemaining(minimumMillis - heldMillis) + ".", NamedTextColor.RED));
             return;
         }
-        Location stashLocation = player.getLocation().clone();
+        StoredLocation stashLocation = storeLocation(player.getLocation());
         removeLegendary(player, item);
         long stashedAt = System.currentTimeMillis();
         long duration = stashDurationMillis();
@@ -392,7 +395,7 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
                 id,
                 Base64.getEncoder().encodeToString(item.serializeAsBytes()),
                 stashLocation,
-                stashLocation.clone(),
+                stashLocation,
                 stashedAt,
                 stashedAt + duration
         );
@@ -446,8 +449,11 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
             }
             Player owner = Bukkit.getPlayer(stash.playerId());
             Location dropLocation = owner == null ? resolveLocation(stash.logoutLocation()) : owner.getLocation().clone();
-            if (dropLocation == null || dropLocation.getWorld() == null) {
+            if (owner != null && (dropLocation == null || dropLocation.getWorld() == null)) {
                 plugin.getLogger().warning("Could not locate expired stash for " + stash.playerId() + "; preserving it.");
+                continue;
+            }
+            if (dropLocation == null || dropLocation.getWorld() == null) {
                 continue;
             }
             dropLocation.getChunk();
@@ -469,12 +475,30 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
         }
     }
 
-    private Location resolveLocation(Location stored) {
-        if (stored == null || stored.getWorld() == null) {
+    private Location resolveLocation(StoredLocation stored) {
+        if (stored == null) {
             return null;
         }
-        stored.getChunk();
-        return stored.clone();
+        World world = Bukkit.getWorld(stored.worldName());
+        if (world == null) {
+            if (missingWorldWarnings.add(stored.worldName())) {
+                plugin.getLogger().warning("Stash drop is waiting for world '" + stored.worldName() + "' to load.");
+            }
+            return null;
+        }
+        missingWorldWarnings.remove(stored.worldName());
+        Location location = new Location(world, stored.x(), stored.y(), stored.z());
+        location.getChunk();
+        return location;
+    }
+
+    private StoredLocation storeLocation(Location location) {
+        return new StoredLocation(
+                location.getWorld().getName(),
+                location.getX(),
+                location.getY(),
+                location.getZ()
+        );
     }
 
     private String getStashOwnerName(Stash stash) {
@@ -662,8 +686,8 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
                     String playerName = section.getString("player-name");
                     String id = section.getString("legendary-id");
                     String itemBytes = section.getString("item-bytes");
-                    Location stashLocation = readLocation(section.getConfigurationSection("stash-location"));
-                    Location logoutLocation = readLocation(section.getConfigurationSection("logout-location"));
+                    StoredLocation stashLocation = readStoredLocation(section.getConfigurationSection("stash-location"));
+                    StoredLocation logoutLocation = readStoredLocation(section.getConfigurationSection("logout-location"));
                     if (id == null || itemBytes == null || stashLocation == null || logoutLocation == null) {
                         plugin.getLogger().warning("Ignoring incomplete stash record " + key + ".");
                         continue;
@@ -750,6 +774,22 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
             return null;
         }
         return new Location(world, section.getDouble("x"), section.getDouble("y"), section.getDouble("z"));
+    }
+
+    private StoredLocation readStoredLocation(ConfigurationSection section) {
+        if (section == null) {
+            return null;
+        }
+        String worldName = section.getString("world");
+        if (worldName == null || worldName.isBlank()) {
+            return null;
+        }
+        return new StoredLocation(
+                worldName,
+                section.getDouble("x"),
+                section.getDouble("y"),
+                section.getDouble("z")
+        );
     }
 
     private void restoreGroundTickets() {
@@ -858,5 +898,12 @@ public final class StashManager implements Listener, CommandExecutor, TabComplet
         data.set(path + ".x", location.getX());
         data.set(path + ".y", location.getY());
         data.set(path + ".z", location.getZ());
+    }
+
+    private void writeLocation(String path, StoredLocation location) {
+        data.set(path + ".world", location.worldName());
+        data.set(path + ".x", location.x());
+        data.set(path + ".y", location.y());
+        data.set(path + ".z", location.z());
     }
 }
