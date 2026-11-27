@@ -68,9 +68,11 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     private NamespacedKey itemKey;
     private NamespacedKey shurikenProjectileKey;
+    private NamespacedKey combatTagKey;
     private LegendaryRegistry registry;
     private LifestealManager lifestealManager;
     private LegendarySettingsMenu legendarySettingsMenu;
+    private StashManager stashManager;
     private final Map<UUID, BossBar> activeBossBars = new HashMap<>();
     private final Map<String, OfflineBeacon> offlineBeacons = new HashMap<>();
     private final Set<String> trackedGlowEntries = new HashSet<>();
@@ -86,14 +88,17 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         mergePackagedConfigDefaults();
         this.itemKey = new NamespacedKey(this, "legendary_id");
         this.shurikenProjectileKey = new NamespacedKey(this, "shuriken_projectile");
+        this.combatTagKey = new NamespacedKey(this, "last_player_combat_damage");
         this.registry = new LegendaryRegistry(this);
         this.lifestealManager = new LifestealManager(this);
         this.legendarySettingsMenu = new LegendarySettingsMenu(this);
+        this.stashManager = new StashManager(this);
         loadOfflineBeacons();
         this.lifestealManager.registerHeartRecipe();
 
         Bukkit.getPluginManager().registerEvents(new LegendaryListener(this), this);
         Bukkit.getPluginManager().registerEvents(new LegendaryStorageListener(this), this);
+        Bukkit.getPluginManager().registerEvents(this.stashManager, this);
         Bukkit.getPluginManager().registerEvents(this.lifestealManager, this);
         Bukkit.getPluginManager().registerEvents(this.legendarySettingsMenu, this);
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -114,6 +119,9 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        if (stashManager != null) {
+            stashManager.shutdown();
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             removeBossBar(player);
         }
@@ -137,6 +145,13 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     }
 
     private void registerCommands() {
+        if (getCommand("stash") != null) {
+            getCommand("stash").setExecutor(stashManager);
+            getCommand("stash").setTabCompleter(stashManager);
+        }
+        if (getCommand("unstash") != null) {
+            getCommand("unstash").setExecutor(stashManager);
+        }
         this.registerCommand("lifesteal", new BasicCommand() {
             @Override
             public void execute(CommandSourceStack source, String[] args) {
@@ -153,6 +168,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                             source.getSender().sendMessage(Component.text("Only players can open the Lifesteal settings.", NamedTextColor.RED));
                         }
                     }
+
                     case "give", "giveheart" -> {
                         if (args.length != 1 || !(source.getSender() instanceof Player player)) {
                             source.getSender().sendMessage(Component.text("Usage: /lifesteal give", NamedTextColor.RED));
@@ -509,6 +525,28 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         }
     }
 
+    public void clearOfflineBeacon(String legendaryId) {
+        if (offlineBeacons.remove(legendaryId) != null) {
+            saveOfflineBeacons();
+        }
+    }
+
+    public void trackDroppedLegendary(Item item) {
+        String id = getLegendaryId(item.getItemStack());
+        if (id == null || stashManager == null) {
+            return;
+        }
+        item.setUnlimitedLifetime(true);
+        item.setInvulnerable(true);
+        stashManager.updateGroundLocation(id, item.getLocation());
+    }
+
+    public void clearDroppedLegendary(String legendaryId) {
+        if (stashManager != null) {
+            stashManager.clearGroundLocation(legendaryId);
+        }
+    }
+
     private void loadOfflineBeacons() {
         org.bukkit.configuration.ConfigurationSection players = getConfig().getConfigurationSection("legendary.offline-beacons");
         if (players == null) {
@@ -557,35 +595,50 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     private List<TrackedTarget> scanActiveTargets() {
         List<TrackedTarget> targets = new ArrayList<>();
+        Set<String> resolvedIds = new HashSet<>();
 
         // 1. Check online players carrying a legendary item
         for (Player player : Bukkit.getOnlinePlayers()) {
-            Set<String> carriedIds = new HashSet<>();
-            for (ItemStack stack : player.getInventory().getContents()) {
-                String id = getLegendaryId(stack);
-                if (id != null) {
-                    carriedIds.add(id);
-                }
-            }
+            Set<String> carriedIds = getLegendaryIdsInInventory(player);
             for (String id : carriedIds) {
                 LegendaryItem def = registry.getById(id);
                 String name = def != null ? def.displayName() : id;
                 targets.add(new TrackedTarget(id, name, player.getLocation(), player.getUniqueId(), player.getName()));
+                resolvedIds.add(id);
             }
         }
 
-        // 2. Check dropped legendary items on the ground
+        // 2. Active stashes have precedence over any stale cached ground location.
+        for (Map.Entry<String, String> entry : stashManager.getActiveStashDisplays().entrySet()) {
+            if (resolvedIds.add(entry.getKey())) {
+                LegendaryItem def = registry.getById(entry.getKey());
+                String name = def == null ? entry.getKey() : def.displayName();
+                targets.add(new TrackedTarget(entry.getKey(), name, null, null, entry.getValue()));
+            }
+        }
+
+        // 3. Check loaded dropped legendary items on the ground.
         for (World world : Bukkit.getWorlds()) {
             for (Item dropped : world.getEntitiesByClass(Item.class)) {
                 String id = getLegendaryId(dropped.getItemStack());
-                if (id != null) {
+                if (id != null && resolvedIds.add(id)) {
+                    trackDroppedLegendary(dropped);
                     LegendaryItem def = registry.getById(id);
                     String name = def != null ? def.displayName() : id;
-                    targets.add(new TrackedTarget(id, name, dropped.getLocation(), null, "DROPPED"));
+                    targets.add(new TrackedTarget(id, name, dropped.getLocation(), null, "Ground"));
                 }
             }
         }
 
+        // 4. Retain the last known location if a dropped entity is not currently indexed.
+        for (LegendaryItem item : registry.getAll()) {
+            if (resolvedIds.add(item.id())) {
+                Location cached = stashManager.getGroundLocation(item.id());
+                if (cached != null) {
+                    targets.add(new TrackedTarget(item.id(), item.displayName(), cached, null, "Ground"));
+                }
+            }
+        }
         return targets;
     }
 
@@ -606,6 +659,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 String id = getLegendaryId(dropped.getItemStack());
                 if (id != null) {
                     dropped.setInvulnerable(true);
+                    trackDroppedLegendary(dropped);
                     if (!dropped.isGlowing()) {
                         dropped.setGlowing(true);
                         dropped.setUnlimitedLifetime(true);
@@ -631,6 +685,9 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             double nearestDist = Double.MAX_VALUE;
 
             for (TrackedTarget target : targets) {
+                if (target.location() == null) {
+                    continue;
+                }
                 // Don't show the proximity alert to the player who is currently holding that item
                 if (target.holderUuid() != null && target.holderUuid().equals(viewer.getUniqueId())) {
                     continue;
@@ -700,16 +757,28 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             for (LegendaryItem item : craftedItems) {
                 TrackedTarget target = targetsById.get(item.id());
                 String icon = target == null ? "§8?" : target.holderUuid() == null ? "§b◆" : "§e☻";
-                String line = icon + " §6" + item.displayName();
+                String line = icon + " §6" + compactTrackerName(item.displayName());
                 if (target == null) {
-                    line += " §8| §7unlocated";
+                    line += " §8| §7Unlocated";
+                } else if (target.location() == null) {
+                    String stashStatus = target.statusLabel()
+                            .replace("Stashed - ", "")
+                            .replace(" (", " ")
+                            .replace(" left)", "");
+                    line += " §8| §6" + stashStatus;
                 } else {
-                    line += target.holderUuid() == null
-                            ? " §8| §7ground"
-                            : " §8| §e" + target.statusLabel();
                     int approxX = roundCoord(target.location().getBlockX());
                     int approxZ = roundCoord(target.location().getBlockZ());
-                    line += " §8~§b" + approxX + "," + approxZ;
+                    String coordinates = approxX + "," + approxZ;
+                    boolean showDimension = getConfig().getBoolean("legendary.tracker-show-dimension", true);
+                    String dimension = showDimension
+                            ? compactTrackerDimension(target.location().getWorld()) + " "
+                            : "";
+                    if (target.holderUuid() == null) {
+                        line += " §8| §7G " + dimension + coordinates;
+                    } else {
+                        line += " §8| §e" + target.statusLabel() + " §7" + dimension + coordinates;
+                    }
                 }
                 obj.getScore(line).setScore(scoreLine--);
             }
@@ -722,6 +791,19 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         int step = Math.max(50, Math.min(1000,
                 getConfig().getInt("legendary.tracker-coordinate-rounding", COORD_ROUND_STEP)));
         return Math.round((float) coord / step) * step;
+    }
+
+    private String compactTrackerName(String displayName) {
+        return displayName.replace("Astral ", "").replace("Storm ", "");
+    }
+
+    private String compactTrackerDimension(World world) {
+        return switch (world.getEnvironment()) {
+            case NORMAL -> "OW";
+            case NETHER -> "Nether";
+            case THE_END -> "End";
+            default -> world.getName();
+        };
     }
 
     private void spawnBeaconBeam(Location base, String legendaryId) {
@@ -914,6 +996,10 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
                 ids.add(id);
             }
         }
+        String cursorId = getLegendaryId(player.getOpenInventory().getCursor());
+        if (cursorId != null) {
+            ids.add(cursorId);
+        }
         return ids;
     }
 
@@ -974,6 +1060,13 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     public int destroyAllLegendaries() {
             Set<String> destroyedIds = new HashSet<>();
+            if (stashManager != null) {
+                Set<String> persistedIds = stashManager.getPersistedLegendaryIds();
+                destroyedIds.addAll(persistedIds);
+                for (String id : persistedIds) {
+                    stashManager.discardLegendary(id);
+                }
+            }
             for (LegendaryItem item : registry.getAll()) {
                 if (isCrafted(item.id())) {
                     destroyedIds.add(item.id());
@@ -1033,6 +1126,9 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
             }
 
             for (String id : destroyedIds) {
+                if (stashManager != null) {
+                    stashManager.discardLegendary(id);
+                }
                 destroyLegendary(id, "destroyed by an administrator");
             }
             return destroyedIds.size();
@@ -1146,12 +1242,12 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         return projectile.getPersistentDataContainer().has(shurikenProjectileKey, PersistentDataType.BYTE);
     }
 
-    private String formatDimension(World.Environment env) {
-        return switch (env) {
+    private String formatDimension(World world) {
+        return switch (world.getEnvironment()) {
             case NORMAL -> "Overworld";
             case NETHER -> "Nether";
-            case THE_END -> "The End";
-            default -> "Unknown";
+            case THE_END -> "End";
+            default -> world.getName();
         };
     }
 
@@ -1212,6 +1308,7 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
         if (!isCrafted(id) || hasLegendaryItem(id)) {
             return;
         }
+        clearDroppedLegendary(id);
         getConfig().set("crafted." + id, false);
         getConfig().set("owners." + id, null);
         if (offlineBeacons.remove(id) != null) {
@@ -1233,6 +1330,9 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
     }
 
     public boolean hasLegendaryItem(String id) {
+        if (stashManager != null && stashManager.hasActiveStash(id)) {
+            return true;
+        }
         for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
             for (ItemStack stack : onlinePlayer.getInventory().getContents()) {
                 if (id.equals(getLegendaryId(stack))) {
@@ -1305,6 +1405,14 @@ public class LegendaryPlugin extends JavaPlugin implements Listener {
 
     public NamespacedKey getShurikenProjectileKey() {
         return shurikenProjectileKey;
+    }
+
+    public NamespacedKey getCombatTagKey() {
+        return combatTagKey;
+    }
+
+    public StashManager getStashManager() {
+        return stashManager;
     }
 
     public LegendaryRegistry getRegistry() {

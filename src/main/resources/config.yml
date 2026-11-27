@@ -4,7 +4,14 @@ crafted:
 legendary:
   logout-behavior: beacon
   tracker-coordinate-rounding: 250
+  tracker-show-dimension: true
   overload-rule: armor_tool
+  stash-duration-hours: 16
+  stash-cooldown-hours: 10
+  stash-min-cooldown-minutes: 15
+  stash-min-hold-minutes: 15
+  stash-warmup-seconds: 5
+  stash-combat-tag-seconds: 20
   offline-beacons: {}
 
 lifesteal:
@@ -166,6 +173,9 @@ abilities:
       cooldown-seconds: 90
       vertical-velocity: 2.4
       combat-tag-seconds: 5
+      landing-burst-radius: 5.0
+      landing-burst-horizontal-knockback: 1.5
+      landing-burst-vertical-knockback: 0.65
   storm_shuriken:
     burst:
       cooldown-seconds: 2.5

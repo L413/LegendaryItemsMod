@@ -1,5 +1,12 @@
 name: "LegendsAndLifesteal"
-version: 2.4.2
+version: 2.5.1
 main: com.l413.legendary.LegendaryPlugin
 api-version: '26.3'
 authors: [l413]
+commands:
+  stash:
+    description: Stash your Legendary item.
+    usage: /stash [claim]
+  unstash:
+    description: Retrieve your stashed Legendary item.
+    usage: /unstash

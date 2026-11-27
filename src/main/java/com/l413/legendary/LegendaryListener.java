@@ -68,10 +68,13 @@ public class LegendaryListener implements Listener {
     private final Map<UUID, BlockFace> excavatorMiningFaces = new HashMap<>();
     private final Set<UUID> areaBreaking = new HashSet<>();
     private final Set<UUID> astralBootSlowFalling = new HashSet<>();
+    private final Set<UUID> activeSkyLaunches = new HashSet<>();
+    private final Set<UUID> airborneSkyLaunches = new HashSet<>();
+    private final Set<UUID> skyLaunchFallImmunity = new HashSet<>();
 
     public LegendaryListener(LegendaryPlugin plugin) {
         this.plugin = plugin;
-        this.combatTagKey = new NamespacedKey(plugin, "last_player_combat_damage");
+        this.combatTagKey = plugin.getCombatTagKey();
         this.safeDropWorldKey = new NamespacedKey(plugin, "safe_drop_world");
         this.safeDropXKey = new NamespacedKey(plugin, "safe_drop_x");
         this.safeDropYKey = new NamespacedKey(plugin, "safe_drop_y");
@@ -82,7 +85,7 @@ public class LegendaryListener implements Listener {
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
         plugin.removeBossBar(event.getPlayer());
-        astralBootSlowFalling.remove(event.getPlayer().getUniqueId());
+        clearPlayerAbilityState(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -160,6 +163,10 @@ public class LegendaryListener implements Listener {
             return;
         }
 
+        UUID playerId = player.getUniqueId();
+        activeSkyLaunches.add(playerId);
+        airborneSkyLaunches.remove(playerId);
+        skyLaunchFallImmunity.add(playerId);
         Location center = player.getLocation();
         player.getWorld().spawnParticle(
                 Particle.FLASH,
@@ -185,7 +192,6 @@ public class LegendaryListener implements Listener {
                 plugin.getConfig().getDouble("abilities.mjolnir.sky-launch.vertical-velocity", 2.4),
                 0.0
         ));
-        UUID playerId = player.getUniqueId();
         new BukkitRunnable() {
             private int tick;
 
@@ -427,7 +433,17 @@ public class LegendaryListener implements Listener {
     }
 
     private boolean tryUseAbility(Player player, ItemStack item, String abilityId, long cooldownMillis) {
-        if (player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
+        return tryUseAbility(player, item, abilityId, cooldownMillis, true);
+    }
+
+    private boolean tryUseAbility(
+            Player player,
+            ItemStack item,
+            String abilityId,
+            long cooldownMillis,
+            boolean bypassCooldownInCreative
+    ) {
+        if (bypassCooldownInCreative && player.getGameMode() == org.bukkit.GameMode.CREATIVE) {
             return true;
         }
 
@@ -540,6 +556,13 @@ public class LegendaryListener implements Listener {
     public void onPlayerMove(PlayerMoveEvent event) {
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
+        if (activeSkyLaunches.contains(playerId)) {
+            if (!player.isOnGround() || player.getVelocity().getY() > 0.05) {
+                airborneSkyLaunches.add(playerId);
+            } else if (airborneSkyLaunches.remove(playerId)) {
+                triggerSkyLaunchLandingBurst(player);
+            }
+        }
         boolean shouldHaveSlowFalling = player.isSneaking()
                 && !player.isOnGround()
                 && player.getVelocity().getY() < -0.08
@@ -629,6 +652,7 @@ public class LegendaryListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerDeath(PlayerDeathEvent event) {
+        clearPlayerAbilityState(event.getEntity());
         Set<String> itemIds = new HashSet<>();
         for (ItemStack stack : event.getDrops()) {
             String id = plugin.getLegendaryId(stack);
@@ -662,7 +686,14 @@ public class LegendaryListener implements Listener {
 
         switch (weaponId) {
             case "astral_sovereign" -> applyAstralHit(attacker, target);
-            case "mjolnir" -> applyMjolnirHit(attacker, target, getHeldLegendaryItem(attacker, weaponId));
+            case "mjolnir" -> {
+                if (!attacker.isOnGround() && attacker.getFallDistance() > 1.5f) {
+                    if (activeSkyLaunches.contains(attacker.getUniqueId())) {
+                        triggerSkyLaunchLandingBurst(attacker);
+                    }
+                    applyMjolnirHit(attacker, target, getHeldLegendaryItem(attacker, weaponId));
+                }
+            }
             default -> {
             }
         }
@@ -742,19 +773,76 @@ public class LegendaryListener implements Listener {
     }
 
     private void applyMjolnirHit(Player attacker, LivingEntity target, ItemStack mjolnir) {
-        if (attacker.getGameMode() == org.bukkit.GameMode.CREATIVE) {
-            strikeMjolnirTarget(target);
-            return;
-        }
-
         if (tryUseAbility(
                 attacker,
                 mjolnir,
                 "mjolnir_lightning",
-                configSecondsMillis("abilities.mjolnir.on-hit-lightning.cooldown-seconds")
+                configSecondsMillis("abilities.mjolnir.on-hit-lightning.cooldown-seconds"),
+                false
         )) {
             strikeMjolnirTarget(target);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onSkyLaunchFallDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || event.getCause() != EntityDamageEvent.DamageCause.FALL) {
+            return;
+        }
+        UUID playerId = player.getUniqueId();
+        if (skyLaunchFallImmunity.remove(playerId)) {
+            event.setCancelled(true);
+        }
+        if (activeSkyLaunches.contains(playerId)) {
+            triggerSkyLaunchLandingBurst(player);
+        }
+    }
+
+    private void triggerSkyLaunchLandingBurst(Player player) {
+        UUID playerId = player.getUniqueId();
+        if (!activeSkyLaunches.remove(playerId)) {
+            return;
+        }
+        airborneSkyLaunches.remove(playerId);
+        Location impact = player.getLocation();
+        double radius = Math.max(0.0, plugin.getConfig().getDouble(
+                "abilities.mjolnir.sky-launch.landing-burst-radius", 5.0
+        ));
+        double horizontalKnockback = plugin.getConfig().getDouble(
+                "abilities.mjolnir.sky-launch.landing-burst-horizontal-knockback", 1.5
+        );
+        double verticalKnockback = plugin.getConfig().getDouble(
+                "abilities.mjolnir.sky-launch.landing-burst-vertical-knockback", 0.65
+        );
+
+        player.getWorld().spawnParticle(Particle.GUST, impact, 24, 0.8, 0.3, 0.8, 0.1);
+        player.getWorld().spawnParticle(Particle.CLOUD, impact, 32, 1.0, 0.25, 1.0, 0.12);
+        player.getWorld().playSound(impact, Sound.ENTITY_WIND_CHARGE_WIND_BURST, 1.5f, 0.8f);
+        double radiusSquared = radius * radius;
+        for (LivingEntity target : player.getWorld().getNearbyLivingEntities(impact, radius, radius, radius)) {
+            if (target.equals(player) || target.getLocation().distanceSquared(impact) > radiusSquared) {
+                continue;
+            }
+            Vector direction = target.getLocation().toVector().subtract(impact.toVector());
+            direction.setY(0.0);
+            if (direction.lengthSquared() < 1.0e-6) {
+                direction = player.getLocation().getDirection().setY(0.0);
+            }
+            if (direction.lengthSquared() < 1.0e-6) {
+                direction = new Vector(1.0, 0.0, 0.0);
+            }
+            direction.normalize().multiply(horizontalKnockback).setY(verticalKnockback);
+            target.setVelocity(direction);
+        }
+    }
+
+    private void clearPlayerAbilityState(Player player) {
+        UUID playerId = player.getUniqueId();
+        astralBootSlowFalling.remove(playerId);
+        activeSkyLaunches.remove(playerId);
+        airborneSkyLaunches.remove(playerId);
+        skyLaunchFallImmunity.remove(playerId);
     }
 
     private void strikeMjolnirTarget(LivingEntity target) {
@@ -880,6 +968,7 @@ public class LegendaryListener implements Listener {
         );
         crafter.getWorld().spawnParticle(Particle.END_ROD, location, 24, 0.45, 0.7, 0.45, 0.03);
         crafter.getWorld().playSound(location, Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 1.2f);
+        plugin.getStashManager().noteCrafted(id, crafter);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -892,6 +981,7 @@ public class LegendaryListener implements Listener {
             itemEntity.setGlowing(true);
             itemEntity.setUnlimitedLifetime(true);
             itemEntity.setInvulnerable(true);
+            plugin.trackDroppedLegendary(itemEntity);
             if (isSafeDropLocation(itemEntity.getLocation())) {
                 storeSafeDropLocation(itemEntity, itemEntity.getLocation());
             } else {
@@ -938,6 +1028,20 @@ public class LegendaryListener implements Listener {
         event.getEntity().getWorld().playSound(location, Sound.ENTITY_ITEM_PICKUP, 0.8f, 1.4f);
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onLegendaryPickupComplete(EntityPickupItemEvent event) {
+        String id = plugin.getLegendaryId(event.getItem().getItemStack());
+        if (id == null || !(event.getEntity() instanceof Player player)) {
+            return;
+        }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!event.getItem().isValid()) {
+                plugin.clearDroppedLegendary(id);
+                plugin.getStashManager().observeHolder(id, player.getUniqueId());
+            }
+        });
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onLegendaryItemDespawn(ItemDespawnEvent event) {
         if (plugin.getLegendaryId(event.getEntity().getItemStack()) != null) {
@@ -967,6 +1071,7 @@ public class LegendaryListener implements Listener {
                 item.setInvulnerable(true);
                 item.setUnlimitedLifetime(true);
                 Location location = item.getLocation();
+                plugin.trackDroppedLegendary(item);
                 if (location.getY() < world.getMinHeight() + 2.0 || isHazardousLocation(location)) {
                     Location safe = readSafeDropLocation(item);
                     if (safe == null) {
