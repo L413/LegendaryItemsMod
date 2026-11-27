@@ -177,6 +177,10 @@ abilities:
       landing-burst-horizontal-knockback: 1.5
       landing-burst-vertical-knockback: 0.65
   storm_shuriken:
+    ride:
+      cooldown-seconds: 8
+      duration-seconds: 3.0
+      speed: 1.8
     burst:
       cooldown-seconds: 2.5
       projectile-count: 3

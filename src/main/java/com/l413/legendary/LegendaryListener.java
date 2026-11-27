@@ -129,6 +129,10 @@ public class LegendaryListener implements Listener {
         } else if ("storm_shuriken".equals(itemId)) {
             event.setCancelled(true);
             if (player.isSneaking()
+                    && event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_AIR
+                    && player.getEyeLocation().getDirection().getY() > 0.1) {
+                activateShurikenRide(player);
+            } else if (player.isSneaking()
                     && event.getAction() == org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK
                     && event.getClickedBlock() != null
                     && event.getBlockFace() == BlockFace.UP) {
@@ -291,6 +295,57 @@ public class LegendaryListener implements Listener {
         ));
         player.addPotionEffect(new PotionEffect(PotionEffectType.HASTE, durationTicks, amplifier, true, false, true));
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_BEACON_POWER_SELECT, 1.0f, 1.8f);
+    }
+
+    private void activateShurikenRide(Player player) {
+        if (!tryUseAbility(
+                player,
+                player.getInventory().getItemInMainHand(),
+                "shuriken_ride",
+                configSecondsMillis("abilities.storm_shuriken.ride.cooldown-seconds")
+        ) || !damageShuriken(player)) {
+            return;
+        }
+
+        Vector direction = player.getEyeLocation().getDirection().normalize();
+        double configuredSpeed = plugin.getConfig().getDouble("abilities.storm_shuriken.ride.speed", 1.8);
+        double speed = Double.isFinite(configuredSpeed) ? Math.max(0.1, configuredSpeed) : 1.8;
+        double configuredDuration = plugin.getConfig().getDouble(
+                "abilities.storm_shuriken.ride.duration-seconds",
+                3.0
+        );
+        int rideTicks = Double.isFinite(configuredDuration)
+                ? Math.max(1, (int) Math.ceil(Math.max(0.0, configuredDuration) * 20.0))
+                : 60;
+        UUID playerId = player.getUniqueId();
+        player.getWorld().playSound(player.getLocation(), Sound.ITEM_TRIDENT_THROW, 1.0f, 0.8f);
+        player.getWorld().spawnParticle(Particle.GUST, player.getLocation(), 8, 0.35, 0.35, 0.35, 0.05);
+
+        new BukkitRunnable() {
+            private int ticks;
+
+            @Override
+            public void run() {
+                Player rider = Bukkit.getPlayer(playerId);
+                if (rider == null || !rider.isOnline() || ticks++ >= rideTicks) {
+                    cancel();
+                    return;
+                }
+                rider.setVelocity(direction.clone().multiply(speed));
+                rider.setFallDistance(0.0f);
+                if (ticks % 4 == 0) {
+                    rider.getWorld().spawnParticle(
+                            Particle.GUST,
+                            rider.getLocation().add(0.0, 0.5, 0.0),
+                            2,
+                            0.15,
+                            0.15,
+                            0.15,
+                            0.02
+                    );
+                }
+            }
+        }.runTaskTimer(plugin, 0L, 1L);
     }
 
     private void activateShurikenBurst(Player player) {
@@ -780,7 +835,7 @@ public class LegendaryListener implements Listener {
                 configSecondsMillis("abilities.mjolnir.on-hit-lightning.cooldown-seconds"),
                 false
         )) {
-            strikeMjolnirTarget(target);
+            strikeMjolnirTarget(attacker, target);
         }
     }
 
@@ -845,8 +900,9 @@ public class LegendaryListener implements Listener {
         skyLaunchFallImmunity.remove(playerId);
     }
 
-    private void strikeMjolnirTarget(LivingEntity target) {
-        target.getWorld().strikeLightning(target.getLocation());
+    private void strikeMjolnirTarget(Player attacker, LivingEntity target) {
+        target.getWorld().strikeLightningEffect(target.getLocation());
+        target.damage(5.0, attacker);
         var effectLocation = target.getLocation().add(0.0, 1.0, 0.0);
         int visualStrikeCount = Math.max(0, plugin.getConfig().getInt(
                 "abilities.mjolnir.on-hit-lightning.visual-strike-count",
